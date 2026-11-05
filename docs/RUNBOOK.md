@@ -46,7 +46,7 @@ pytest -q
 Command-line generation without the web app:
 
 ```bash
-string-art-studio generate photo.jpg --out plan --engine a --pins 240 --lines 4000
+string-art-studio generate photo.jpg --out plan --engine a --pins 240 --lines 8000
 ```
 
 ## Environment variables
@@ -101,7 +101,7 @@ can also travel as a bundle ZIP from the results page.
    faithful target is the best target.
 3. Press "Show importance" on the preview: faces and edges should be red. Paint the mask for anything
    else that matters (a ring, a logo on a shirt).
-4. Generate engine A. Expect it to use the whole 4,000-line budget on a portrait; the "regrown"
+4. Generate engine A. Maximum lines (8,000 by default) is a ceiling; the results page says when a plan hit it. The "regrown"
    number in the metrics table shows the lines added after the local search.
 
 ## Colour plans
@@ -110,8 +110,8 @@ Pick a palette in the Board panel (or Auto to take colours from the photo); the 
 colour and the swatches show the build order, lightest first. Colour plans run on engine A and take
 about twice as long as a single thread (about one minute for 4,000 lines on a desktop, two on the media PC).
 Colour plans are line-hungry (each colour needs its own coverage): on the colour sample the error
-was 0.254 at 4,000 lines and 0.197 at 6,000, so raise Maximum lines to about 6,000 for colour and budget
-the thread accordingly. More search time changes nothing; both engines converge inside the default budget.
+was 0.254 at 4,000 lines and 0.197 at 6,000, which is why the default ceiling is now 8,000; budget the thread
+accordingly. More search time changes nothing; both engines converge inside the default budget.
 In build mode the current colour sits in the top bar and the player stops at each change: tie off,
 change thread, tie on at the pin shown, press Next. Buy one spool per colour; the metrics table
 gives the thread per colour.

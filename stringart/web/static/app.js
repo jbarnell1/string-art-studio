@@ -674,7 +674,7 @@
       el("div", { class: "switch" }, [el("div", {}, [el("div", { class: "label" }, "Invert"), el("div", { class: "sub" }, "Light thread on a dark board. The thread then builds the light areas.")]), invertToggle]),
       el("div", { class: "row2" }, [
         numberField(board, "min_skip", "Minimum pin skip", { min: 1, max: 199, step: 1, help: "Chords between pins closer than this are never used; they hug the rim and add little." }, boardChanged),
-        numberField(board, "max_lines", "Maximum lines", { min: 10, max: 20000, step: 100, help: "A cap. The engines stop earlier when no line still helps." }, boardChanged),
+        numberField(board, "max_lines", "Maximum lines", { min: 10, max: 20000, step: 100, help: "A ceiling, not a target: the engines stop on their own when no line still helps. If a plan reports that it used every line, raise this; more lines keep improving colour plans and detailed single-thread ones at the cost of thread." }, boardChanged),
         numberField(board, "viewing_distance_m", "Viewing distance", { min: 0.3, max: 10, step: 0.1, unit: "metres", help: "Sets the blur both engines compare through." }, boardChanged),
         numberField(board, "sector_count", "Sectors", { min: 1, max: 26, step: 1, help: "Pins are grouped A, B, C... so they are quicker to find while building." }, boardChanged),
       ]),
@@ -897,6 +897,7 @@
       metricsBox.append(table);
       const m = (shown.find((r) => r.id === runId) || done[0]).metrics;
       finding.textContent = `${fmt.int(m.line_count)} lines and ${fmt.len(m.thread_length_mm)} of thread, error ${fmt.fixed(m.error, 3)} from ${fmt.fixed(m.error_initial, 3)}; buy ${fmt.len(m.thread_with_margin_mm)} (${fmt.int(m.spools_1000yd)} spool${m.spools_1000yd === 1 ? "" : "s"} of 1,000 yd).`;
+      if (m.stop_reason === "max lines") finding.textContent += " This plan used every line it was allowed; raise Maximum lines in Settings if you want more detail.";
     }
     renderMetrics();
 

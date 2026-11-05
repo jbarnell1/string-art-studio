@@ -73,7 +73,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--engine", default="a")
     ap.add_argument("--res", type=int, default=800)
-    ap.add_argument("--lines", type=int, default=4000)
+    ap.add_argument("--lines", type=int, default=8000)
     ap.add_argument("--pins", type=int, default=240)
     ap.add_argument("--refine", type=float, default=20.0)
     ap.add_argument("--out", default="")

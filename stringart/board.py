@@ -24,7 +24,7 @@ class BoardConfig:
     board_color: str = "#f6f3ee"
     invert: bool = False
     min_skip: int = 15
-    max_lines: int = 4000
+    max_lines: int = 8000        # a ceiling: the engines stop earlier when no line still helps
     viewing_distance_m: float = 1.5
     blur_mm_per_m: float = 1.5
     sector_count: int = 8

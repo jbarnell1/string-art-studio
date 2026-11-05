@@ -60,8 +60,8 @@ Details: [docs/RUNBOOK.md](docs/RUNBOOK.md) (running, backups, calibration),
 Press "Frame the face" (or crop so the face fills the circle), pick the Portrait preset, push the
 background to white with the white point, and keep gamma at 0.75 to 0.8 so skin gets thread. Faces
 are weighed up automatically; paint the mask for anything else. Then generate both engines and
-compare. Expect 2,000 to 4,000 lines and 800 to 1,400 m of thread on a 24
-inch board with 240 pins. Before buying thread, build one piece and calibrate the thread width and
+compare. Maximum lines is a ceiling, not a target: the engines stop when no line still helps. Expect
+3,000 to 6,000 lines and 1 to 2.5 km of thread on a 24 inch board with 240 pins, more for colour. Before buying thread, build one piece and calibrate the thread width and
 opacity against it (RUNBOOK, "Calibration").
 
 ## Materials for one 24 inch piece

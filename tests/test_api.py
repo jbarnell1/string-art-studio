@@ -137,3 +137,44 @@ def test_faces_weightmap_and_voice_endpoints(client: TestClient):
     steps = client.get(f"/api/runs/{rid}/steps").json()
     assert steps["phrases"][7] == "Pin 7. A 8." and "Voice on." in steps["extra_phrases"]
     assert client.post(f"/api/runs/{rid}/voice/prewarm", json={"speed": 1.0}).status_code == 503
+
+
+def _color_photo_bytes() -> bytes:
+    yy, xx = np.mgrid[0:300, 0:300]
+    img = np.full((300, 300, 3), 245, dtype=np.uint8)
+    img[(xx - 100) ** 2 + (yy - 95) ** 2 < 32 ** 2] = (215, 40, 30)      # small red disc, upper left
+    img[(xx - 170) ** 2 + (yy - 190) ** 2 < 65 ** 2] = (20, 20, 20)      # large black disc, lower right
+    buf = io.BytesIO()
+    Image.fromarray(img).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def test_colour_run_layers_and_exports(client: TestClient):
+    p = client.post("/api/projects", json={"name": "Colour"}).json()
+    pid = p["id"]
+    client.post(f"/api/projects/{pid}/image", files={"file": ("photo.jpg", _color_photo_bytes(), "image/jpeg")})
+    board = {"pin_count": 80, "max_lines": 260, "work_res": 240, "min_skip": 8, "palette": ["#161616", "#d9261c"]}
+    pal = client.post(f"/api/projects/{pid}/palette", json={"prep": {}, "board": board, "size": 240}).json()
+    assert [c["name"] for c in pal["colors"]] == ["red", "black"] and pal["is_color"] is True
+    r = client.post(f"/api/projects/{pid}/preview", json={"prep": {}, "board": board, "size": 240})
+    assert r.status_code == 200
+    r = client.post(f"/api/projects/{pid}/runs", json={"engine": "both", "board": board, "params": {"refine_seconds": 1}})
+    runs = r.json()["runs"]
+    assert len(runs) == 1  # colour plans run on engine A only
+    run = _wait_done(client, runs[0]["id"])
+    assert run["status"] == "done", run["error_message"]
+    rid = run["id"]
+    layers = run["metrics"]["layers"]
+    assert [l["name"] for l in layers] == ["red", "black"], layers
+    assert sum(l["lines"] for l in layers) == run["metrics"]["line_count"]
+    steps = client.get(f"/api/runs/{rid}/steps").json()
+    assert len(steps["layers"]) == 2 and steps["layers"][1]["start"] > 0
+    assert len(steps["change_phrases"]) == 1 and "black thread" in steps["change_phrases"][0]
+    csv_text = client.get(f"/api/runs/{rid}/sequence.csv").text.splitlines()
+    assert csv_text[0] == "step,layer,color,pin,label,from_pin,length_mm"
+    assert any(line.split(",")[2] == "black" for line in csv_text[1:])
+    assert client.get(f"/api/runs/{rid}/render.png").status_code == 200
+    bundle = client.get(f"/api/projects/{pid}/bundle.zip")
+    imported = client.post("/api/projects/import", files={"file": ("c.zip", bundle.content, "application/zip")}).json()
+    new_run = client.get(f"/api/projects/{imported['id']}").json()["runs"][0]
+    assert len(client.get(f"/api/runs/{new_run['id']}/steps").json()["layers"]) == 2

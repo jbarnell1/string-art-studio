@@ -52,10 +52,21 @@ Done:
 - Engine about twice as fast per line: banded updates, lookup tables, cached fans (ADR-016).
 - Bench (man sample, lightness error, board / face): v2 engine 0.187 / 0.236, v3 0.157 / 0.195, in half the time.
 
-## v3 part two, colour
+## v3 part two, colour (built 2026-11-05)
 
-Palette presets (CMY plus black), custom palettes, auto palette by k-means always including black;
-one coverage layer per colour composited in build order; CIELAB error after the blur; one continuous
-thread per colour sharing the line budget; lightest first, black last on a light board. The engine
-state is already palette-agnostic in the sense that coverage, weights and gradient are per layer;
-the scoring loop needs a per-colour `d` and a Lab comparison.
+Done (ADR-017): palette presets (CMYK, warm skin, earth, primary), custom palettes up to six
+colours, automatic palettes by k-means always including black; one coverage layer per colour
+composited in build order in linear light; CIELAB error after the blur; one continuous thread per
+colour sharing the line budget, greedy over (colour, line) with per-layer local search; colour
+preview, per-colour lines and thread in the results, colour changes in build mode with voice,
+layer and colour columns in the exports, bundles carry layers. Sample: `samples/portrait-color.jpg`.
+
+Not done:
+- Engine B for colour.
+- Thread brand palettes (measured colours of real spools); the presets are nominal hex values.
+
+## Later
+
+- Square and rectangular frames; printable thread-width test pattern; minimum-weight matching in
+  engine B's repair; a clicker settings page; colour-change pauses for auto-advance are in (build
+  mode stops at a change), timed pauses are not.

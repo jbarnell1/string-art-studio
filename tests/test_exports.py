@@ -174,7 +174,8 @@ def test_dxf_ring_variant_has_four_lines_per_notch(board):
 def test_steps_table(board, sequence):
     rows = steps_table(board, sequence)
     assert len(rows) == len(sequence)
-    assert rows[0] == {"step": 1, "pin": 0, "label": "A1", "from_pin": None, "length_mm": 0.0}
+    assert rows[0] == {"step": 1, "layer": 0, "color": board.thread_color, "color_name": "black", "pin": 0,
+                       "label": "A1", "from_pin": None, "length_mm": 0.0}
     assert rows[1]["from_pin"] == 0
     assert rows[1]["length_mm"] == pytest.approx(board.chord_length_mm(0, 60), abs=0.001)
 
@@ -188,10 +189,23 @@ def test_sequence_txt(board, sequence):
 
 def test_sequence_csv(board, sequence):
     rows = list(csv.reader(io.StringIO(sequence_csv(board, sequence).decode("utf-8"))))
-    assert rows[0] == ["step", "pin", "label", "from_pin", "length_mm"]
+    assert rows[0] == ["step", "layer", "color", "pin", "label", "from_pin", "length_mm"]
     assert len(rows) - 1 == len(sequence)
-    assert rows[1][3] == ""
-    assert rows[2][3] == "0"
+    assert rows[1][5] == ""
+    assert rows[2][5] == "0"
+
+
+def test_layers_exports(board, sequence):
+    layers = [{"name": "red", "color": "#d9261c", "sequence": sequence[:3]},
+              {"name": "black", "color": "#161616", "sequence": sequence[3:]}]
+    lines = sequence_txt(board, layers).decode("utf-8").splitlines()
+    assert lines[0].startswith("== red thread") and sum(1 for l in lines if l.startswith("==")) == 2
+    rows = list(csv.reader(io.StringIO(sequence_csv(board, layers).decode("utf-8"))))
+    assert rows[4][1] == "1" and rows[4][2] == "black" and rows[4][5] == ""
+    data = json.loads(sequence_json(board, layers).decode("utf-8"))
+    assert [l["name"] for l in data["layers"]] == ["red", "black"]
+    assert data["sequence"] == sequence
+    assert data["thread"]["length_mm"] == pytest.approx(board.sequence_length_mm(sequence[:3]) + board.sequence_length_mm(sequence[3:]))
 
 
 def test_sequence_json_round_trips(board, sequence):

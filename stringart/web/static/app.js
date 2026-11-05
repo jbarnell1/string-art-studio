@@ -604,6 +604,57 @@
     const threadColor = el("input", { type: "color", value: board.thread_color, onchange: (e) => { board.thread_color = e.target.value; boardChanged(); } });
     const boardColor = el("input", { type: "color", value: board.board_color, onchange: (e) => { board.board_color = e.target.value; boardChanged(); } });
     const boardSummaryText = () => `${fmt.size(board.diameter_mm)} board, ${board.pin_count} pins ${fmt.size(board.pin_inset_mm, 1)} in from the edge, pins ${(board.diameter_mm / board.pin_count * Math.PI / 1).toFixed(1)} mm apart along the rim. Thread ${board.thread_width_mm} mm.`;
+
+    // Palette: one thread, a preset set, an automatic set from the photo, or your own colours.
+    board.palette = Array.isArray(board.palette) ? board.palette : [];
+    board.palette_auto = Number(board.palette_auto || 0);
+    const PALETTE_PRESETS = { cmyk: ["#00aeef", "#ec008c", "#fff200", "#161616"], warm: ["#f6c9a8", "#c9733a", "#6b4423", "#161616"], earth: ["#e6d3b3", "#c9a27e", "#6b4423", "#1b2a5c", "#161616"], primary: ["#f2d21c", "#d9261c", "#2457c5", "#161616"] };
+    const paletteMode = () => board.palette_auto >= 2 ? `auto${board.palette_auto}` : (board.palette.length >= 2 ? (Object.keys(PALETTE_PRESETS).find((k) => PALETTE_PRESETS[k].join() === board.palette.join()) || "custom") : "single");
+    const paletteChips = el("div", { class: "chips" });
+    const swatches = el("div", { class: "swatches" });
+    const customBox = el("div", { class: "palette-custom hidden" });
+    const isColor = () => board.palette_auto >= 2 || board.palette.length >= 2;
+    const refreshPalette = debounce(async () => {
+      swatches.textContent = "";
+      if (!isColor()) { swatches.append(el("span", { class: "muted" }, "One thread in the thread colour above.")); return; }
+      try {
+        const res = await api.post(`api/projects/${pid}/palette`, { prep, board, size: 400 });
+        res.colors.forEach((c, i) => swatches.append(el("span", { class: "swatch" }, [el("i", { style: `background:${c.color}` }), `${i + 1}. ${c.name}`])));
+        swatches.append(el("span", { class: "muted", style: "font-size:12px" }, "in build order, first laid first"));
+      } catch (err) { swatches.append(el("span", { class: "muted" }, "Palette: " + err.message)); }
+    }, 250);
+    function renderCustom() {
+      customBox.textContent = "";
+      if (paletteMode() !== "custom") { customBox.classList.add("hidden"); return; }
+      customBox.classList.remove("hidden");
+      board.palette.forEach((c, i) => {
+        customBox.append(el("span", { class: "swatch" }, [
+          el("input", { type: "color", value: c, onchange: (e) => { board.palette[i] = e.target.value; paletteChanged(); } }),
+          el("button", { class: "btn small quiet", type: "button", title: "Remove", onclick: () => { board.palette.splice(i, 1); paletteChanged(); renderCustom(); } }, "×"),
+        ]));
+      });
+      if (board.palette.length < 6) customBox.append(el("button", { class: "btn small", type: "button", onclick: () => { board.palette.push("#2457c5"); paletteChanged(); renderCustom(); } }, "Add colour"));
+    }
+    function paletteChanged() {
+      $$("button", paletteChips).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === paletteMode())));
+      engineNote();
+      boardChanged();
+      refreshPalette();
+    }
+    [["single", "Single thread"], ["cmyk", "CMYK"], ["warm", "Warm skin"], ["earth", "Earth"], ["primary", "Primary"], ["auto4", "Auto, 4 colours"], ["auto6", "Auto, 6 colours"], ["custom", "Custom"]].forEach(([mode, label]) => {
+      paletteChips.append(el("button", { class: "chip", type: "button", dataset: { mode }, "aria-pressed": String(paletteMode() === mode), onclick: () => {
+        if (mode === "single") { board.palette = []; board.palette_auto = 0; }
+        else if (mode.startsWith("auto")) { board.palette_auto = Number(mode.slice(4)); }
+        else if (mode === "custom") { board.palette_auto = 0; if (board.palette.length < 2) board.palette = ["#d9261c", "#2457c5", "#161616"]; }
+        else { board.palette = PALETTE_PRESETS[mode].slice(); board.palette_auto = 0; }
+        paletteChanged();
+        renderCustom();
+      } }, label));
+    });
+    const paletteField = el("div", { class: "field" }, [el("label", {}, ["Colours", el("span", { class: "val" }, "v3")]), paletteChips, customBox, swatches,
+      el("div", { class: "help" }, "Several threads, each one continuous, laid lightest first and black last. The picture is matched in colour (CIELAB) from the viewing distance. Colour plans use engine A.")]);
+    renderCustom();
+    refreshPalette();
     const boardSummary = el("div", {}, boardSummaryText());
     const boardBody = el("div", {}, [
       el("div", { style: "display:flex;justify-content:flex-end;margin-bottom:8px" }, unitsSeg),
@@ -619,6 +670,7 @@
         el("div", { class: "field" }, [el("label", {}, "Thread colour"), threadColor]),
         el("div", { class: "field" }, [el("label", {}, "Board colour"), boardColor]),
       ]),
+      paletteField,
       el("div", { class: "switch" }, [el("div", {}, [el("div", { class: "label" }, "Invert"), el("div", { class: "sub" }, "Light thread on a dark board. The thread then builds the light areas.")]), invertToggle]),
       el("div", { class: "row2" }, [
         numberField(board, "min_skip", "Minimum pin skip", { min: 1, max: 199, step: 1, help: "Chords between pins closer than this are never used; they hug the rim and add little." }, boardChanged),
@@ -636,6 +688,13 @@
     [["a", "Engine A"], ["b", "Engine B"], ["both", "Run both"]].forEach(([k, label]) => {
       engineSeg.append(el("button", { type: "button", "aria-pressed": String(engineChoice.value === k), onclick: () => { engineChoice.value = k; engine.engine = k; $$("button", engineSeg).forEach((b) => b.setAttribute("aria-pressed", String(b.textContent === label))); save(); } }, label));
     });
+    const engineNoteEl = el("div", { class: "help" }, "");
+    function engineNote() {
+      const color = board.palette_auto >= 2 || (board.palette || []).length >= 2;
+      $$("button", engineSeg).forEach((b, i) => { if (i > 0) b.disabled = color; });
+      engineNoteEl.textContent = color ? "Colour plans run on engine A; B and Run both apply to single-thread plans." : "";
+    }
+    engineNote();
     const presetSelect = el("select", { "aria-label": "Preset" }, [el("option", { value: "" }, "Load a preset"), ...presets.map((p) => el("option", { value: p.id }, p.name))]);
     presetSelect.addEventListener("change", () => {
       const p = presets.find((x) => x.id === presetSelect.value);
@@ -664,7 +723,7 @@
       presetSelect.value = "";
     } }, "Delete preset");
     const engineBody = el("div", {}, [
-      el("div", { class: "field" }, [el("label", {}, "Engine"), engineSeg, el("div", { class: "help" }, "A is the proven greedy walk with refinement. B builds the best set of chords first, then repairs it into one continuous thread. Run both to compare them side by side.")]),
+      el("div", { class: "field" }, [el("label", {}, "Engine"), engineSeg, el("div", { class: "help" }, "A is the proven greedy walk with local search. B builds the best set of chords first, then repairs it into one continuous thread. Run both to compare them side by side."), engineNoteEl]),
       rangeField(engine, { key: "light_protection", label: "Light area protection", min: 0.05, max: 1, step: 0.05, reset: 1, help: "1 is the honest objective: a thread crossing a white area costs as much as a missing thread in a dark area. Since the engine models light properly (v3) it is also the best setting; lower values trade a cleaner background for a darker, hazier picture.", format: (v) => fmt.fixed(v, 2) }, save),
       el("div", { class: "row2" }, [
         numberField(engine, "refine_seconds", "Refinement budget (A)", { min: 0, max: 600, step: 5, unit: "seconds" }, save),
@@ -808,6 +867,8 @@
         ["Error (weighted RMS, lower is better)", (m) => fmt.fixed(m.error, 4), (a, b) => a < b],
         ["Lines", (m) => fmt.int(m.line_count), null],
         ["Thread", (m) => fmt.len(m.thread_length_mm), null],
+        ["Lines per colour", (m) => m.layers && m.layers.length > 1 ? m.layers.map((l) => `${l.name} ${fmt.int(l.lines)}`).join(", ") : "–", null],
+        ["Thread per colour", (m) => m.layers && m.layers.length > 1 ? m.layers.map((l) => `${l.name} ${fmt.len(l.thread_length_mm)}`).join(", ") : "–", null],
         ["Thread to buy (20% margin)", (m) => fmt.len(m.thread_with_margin_mm), null],
         ["Spools of 1,000 yd", (m) => fmt.int(m.spools_1000yd), null],
         ["Generation time", (m) => fmt.secs(m.elapsed_s), (a, b) => a < b],
@@ -916,6 +977,10 @@
     const n = data.pin_count;
     const labels = data.labels;
     const phrases = data.phrases || [];
+    const layers = data.layers && data.layers.length ? data.layers : [{ name: "thread", color: "#161616", start: 0, lines: seq.length - 1 }];
+    const changePhrases = data.change_phrases || [];
+    const layerAt = (index) => { let k = 0; for (let i = 0; i < layers.length; i++) if (layers[i].start <= index) k = i; return k; };
+    const isChangeStep = (s) => layers.some((l, i) => i > 0 && l.start === s + 1);
     const total = Math.max(seq.length - 1, 0);
     const storeKey = `sas-build-${runId}`;
     let step = Number((data.progress && data.progress.step) || 0);
@@ -941,7 +1006,9 @@
 
     const stepEl = el("span", { class: "step num" });
     const exitBtn = el("a", { class: "btn quiet", href: `#/r/${runId}` }, "Exit");
-    const top = el("div", { class: "build-top" }, [exitBtn, stepEl, el("span", { class: "muted", style: "font-size:12px" }, fmt.len(data.thread.length_mm) + " total")]);
+    const colorTag = el("span", { class: "color-tag" }, [el("i"), el("span")]);
+    if (layers.length < 2) colorTag.classList.add("hidden");
+    const top = el("div", { class: "build-top" }, [exitBtn, stepEl, colorTag, el("span", { class: "muted", style: "font-size:12px" }, fmt.len(data.thread.length_mm) + " total")]);
     const progress = el("div", { class: "build-progress" }, el("i"));
     const main = el("div", { class: "build-main", role: "button", tabindex: 0, "aria-label": "Advance to the next pin" });
     const backBtn = el("button", { class: "btn" }, "Back");
@@ -1072,8 +1139,26 @@
       }
       nextBtn.disabled = false;
       const from = seq[step], to = seq[step + 1], after = step + 2 <= total ? seq[step + 2] : null;
+      const layer = layers[layerAt(step + 1)];
+      colorTag.firstChild.style.background = layer.color;
+      colorTag.lastChild.textContent = layer.name;
+      if (isChangeStep(step)) {
+        // The next pin starts a new colour: tie off, change thread, start there.
+        const k = layerAt(step + 1);
+        main.append(
+          el("div", { class: "label" }, `Tie off the ${layers[k - 1].name} thread at pin ${from} (${labels[from]})`),
+          el("div", { class: "swatch-big", style: `background:${layer.color}` }),
+          el("div", { class: "sector" }, `Change to ${layer.name} thread`),
+          el("div", { class: "dir" }, [`Tie it at pin `, el("b", { class: "num" }, String(to)), ` (${labels[to]}), then tap Next`]),
+          el("div", { class: "thread" }, `${fmt.int(layer.lines)} ${layer.name} lines to go`),
+        );
+        backBtn.disabled = step === 0;
+        if (timer) { stopAuto(); pauseBtn.textContent = "Resume"; }
+        if (announce) speak(changePhrases[k - 1] || `Change to ${layer.name} thread. Start at pin ${to}.`);
+        return;
+      }
       main.append(
-        el("div", { class: "label" }, step === 0 ? `Start: tie the thread at pin ${from} (${labels[from]}), then wrap` : `From pin ${from}, wrap`),
+        el("div", { class: "label" }, step === 0 ? `Start: tie the ${layers.length > 1 ? layer.name + " " : ""}thread at pin ${from} (${labels[from]}), then wrap` : `From pin ${from}, wrap`),
         el("div", { class: "pin num" }, String(to)),
         el("div", { class: "sector" }, labels[to]),
         el("div", { class: "dir" }, direction(from, to)),

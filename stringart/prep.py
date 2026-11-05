@@ -198,6 +198,18 @@ def prepare_target(rgb: np.ndarray, prep: PrepSettings, board: BoardConfig, res:
     return tone_pipeline(framed, prep)
 
 
+def prepare_target_rgb(rgb: np.ndarray, prep: PrepSettings, board: BoardConfig, res: int,
+                       subject_alpha: np.ndarray | None = None) -> np.ndarray:
+    """The colour target for a palette run: the framed photo with the same tone pipeline applied
+    through its luminance, so chroma follows the grey the user tuned. Float32 sRGB in [0, 1]."""
+    src = apply_subject_alpha(rgb, subject_alpha, fill_white=not board.invert) if prep.background_removal else rgb
+    framed = frame_source(src, prep, res)
+    gray_in = np.clip(framed @ np.array([0.299, 0.587, 0.114], dtype=np.float32), 1e-3, 1.0)
+    gray_out = tone_pipeline(framed, prep)
+    ratio = (gray_out / gray_in)[..., None]
+    return np.clip(framed * ratio, 0.0, 1.0).astype(np.float32)
+
+
 def target_darkness(gray: np.ndarray, board: BoardConfig) -> np.ndarray:
     """What thread coverage should look like: darkness on a light board, lightness on a dark one."""
     return gray.astype(np.float32) if board.invert else (1.0 - gray).astype(np.float32)
@@ -265,7 +277,10 @@ def decode_mask_png(data: bytes) -> np.ndarray:
     return img.astype(np.float32) / 255.0
 
 
-def preview_jpeg(gray: np.ndarray, quality: int = 85) -> bytes:
-    ok, buf = cv2.imencode(".jpg", (np.clip(gray, 0, 1) * 255).astype(np.uint8),
-                           [cv2.IMWRITE_JPEG_QUALITY, quality])
+def preview_jpeg(img: np.ndarray, quality: int = 85) -> bytes:
+    """Grayscale (h, w) or RGB (h, w, 3) floats in [0, 1] to JPEG."""
+    arr = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+    if arr.ndim == 3:
+        arr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+    ok, buf = cv2.imencode(".jpg", arr, [cv2.IMWRITE_JPEG_QUALITY, quality])
     return buf.tobytes()

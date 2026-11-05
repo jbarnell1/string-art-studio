@@ -60,6 +60,9 @@ def write_bundle(project: dict[str, Any], runs: list[dict[str, Any]], source_ima
         entry.setdefault("params", {})
         entry.setdefault("metrics", {})
         entry["sequence"] = [int(p) for p in entry.get("sequence") or []]
+        if entry.get("layers"):
+            entry["layers"] = [{"name": str(l.get("name", "")), "color": str(l.get("color", "")),
+                                "sequence": [int(p) for p in l.get("sequence") or []]} for l in entry["layers"]]
         manifest["runs"].append(entry)
 
     ext = _normalise_ext(source_ext)
@@ -79,6 +82,7 @@ def write_bundle(project: dict[str, Any], runs: list[dict[str, Any]], source_ima
                 "params": entry["params"],
                 "metrics": entry["metrics"],
                 "sequence": entry["sequence"],
+                "layers": entry.get("layers"),
                 "step_count": len(entry["sequence"]),
             }, indent=2))
     return buffer.getvalue()
@@ -142,7 +146,10 @@ def read_bundle(data: bytes) -> dict[str, Any]:
             if not run.get("sequence"):
                 member = f"{SEQUENCES_DIR}/{_run_id(run, index)}.json"
                 if member in names:
-                    run["sequence"] = json.loads(zf.read(member).decode("utf-8")).get("sequence", [])
+                    data = json.loads(zf.read(member).decode("utf-8"))
+                    run["sequence"] = data.get("sequence", [])
+                    if data.get("layers"):
+                        run["layers"] = data["layers"]
 
         source = None
         source_ext = ""

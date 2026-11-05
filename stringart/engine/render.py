@@ -57,14 +57,25 @@ def coverage_image(board: BoardConfig, sequence: list[int], size: int) -> np.nda
 
 def render_rgb(board: BoardConfig, sequence: list[int], size: int, board_color: str | None = None,
                thread_color: str | None = None, draw_pins: bool = True) -> np.ndarray:
-    """RGB uint8 picture of the finished piece."""
-    cov = coverage_image(board, sequence, size)
+    """RGB uint8 picture of the finished single-thread piece."""
+    return render_layers_rgb(board, [{"color": thread_color or board.thread_color, "sequence": sequence}], size,
+                             board_color=board_color, draw_pins=draw_pins)
+
+
+def render_layers_rgb(board: BoardConfig, layers: list[dict], size: int, board_color: str | None = None,
+                      draw_pins: bool = True) -> np.ndarray:
+    """RGB uint8 picture of a piece with one or more thread colours, composited in build order
+    (the first layer is laid first and covered by the later ones) in linear light."""
     bg = srgb_to_linear(np.array(hex_to_rgb(board_color or board.board_color, (246, 243, 238)), dtype=np.float32) / 255.0)
-    fg = srgb_to_linear(np.array(hex_to_rgb(thread_color or board.thread_color, (22, 22, 22)), dtype=np.float32) / 255.0)
-    # Light adds linearly: a half-covered pixel reflects half the light, which the screen must
-    # show as the encoded value of that luminance, not as the midpoint of the two colours.
-    lin = bg[None, None, :] * (1.0 - cov[..., None]) + fg[None, None, :] * cov[..., None]
+    lin = np.broadcast_to(bg, (size, size, 3)).astype(np.float32).copy()
+    for layer in layers:
+        cov = coverage_image(board, [int(p) for p in layer.get("sequence") or []], size)[..., None]
+        fg = srgb_to_linear(np.array(hex_to_rgb(layer.get("color") or board.thread_color, (22, 22, 22)), dtype=np.float32) / 255.0)
+        # Light adds linearly: a half-covered pixel reflects half the light, which the screen must
+        # show as the encoded value of that luminance, not as the midpoint of the two colours.
+        lin = lin * (1.0 - cov) + fg[None, None, :] * cov
     out = (linear_to_srgb(lin) * 255.0 + 0.5).astype(np.uint8)
+    fg = fg if layers else np.zeros(3, dtype=np.float32)
     # Outside the board stays a neutral paper tone so the circle reads as a board.
     yy, xx = np.mgrid[0:size, 0:size]
     r = size / 2.0
@@ -73,7 +84,7 @@ def render_rgb(board: BoardConfig, sequence: list[int], size: int, board_color: 
     if draw_pins:
         pins = board.pin_positions_px(size)
         rad = max(1, int(round(board.pin_diameter_mm / board.pixel_mm(size) / 2.0)))
-        pin_col = (90, 90, 90) if sum(fg) > 380 else (120, 120, 120)
+        pin_col = (120, 120, 120)
         for x, y in pins:
             cv2.circle(out, (int(round(x)), int(round(y))), rad, pin_col, -1, lineType=cv2.LINE_AA)
     return out
@@ -90,7 +101,7 @@ def comparison_image(target_gray: np.ndarray, render: np.ndarray, blur_sigma_px:
     viewing-distance sigma so they compare the way the eye would."""
     size = render.shape[0]
     t = cv2.resize(target_gray.astype(np.float32), (size, size), interpolation=cv2.INTER_AREA)
-    left = gray_to_rgb(t)
+    left = gray_to_rgb(t) if t.ndim == 2 else (np.clip(t, 0, 1) * 255).astype(np.uint8)
     right = render
     if blur_sigma_px > 0.3:
         # The eye blurs light, so blur in linear light and encode afterwards.

@@ -27,6 +27,9 @@ template and laser or CNC files, then string the piece from your phone with huge
   thread, reporting what the repair cost.
 - Generation runs on the server as a cancellable background job with a live render; every run is kept
   as a version of the project.
+- Colour: pick a palette (CMYK, warm skin, earth, primary), your own colours, or let it choose from the
+  photo; each colour is one continuous thread, laid lightest first and black last, matched in CIELAB
+  from the viewing distance. Build mode stops at every thread change and says what to do.
 - Exports: pin template PDF (tiled across Letter or A4 with alignment marks, or one large sheet, with a
   100 mm check bar), SVG and DXF fab files (holes or a notched ring), sequence as TXT, CSV or JSON, the
   render and comparison pictures, and a project bundle ZIP to move a project between instances.
@@ -69,6 +72,6 @@ at 100%, tape it to the board, hammer the brads through the marks, peel the pape
 
 ## Status
 
-v1 (generate and compare) and v2 (Piper voice, portrait help) are built; the pilot physical build
-and its calibration are next, then colour (v3). Sample photos in `samples/` are AI-generated fictional people and a
+v1 (generate and compare), v2 (Piper voice, portrait help) and v3 (linear-light engine, colour)
+are built; the pilot physical build and its calibration are next. Sample photos in `samples/` are AI-generated fictional people and a
 dog. MIT licence.

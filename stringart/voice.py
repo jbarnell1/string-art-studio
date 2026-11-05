@@ -34,6 +34,11 @@ def pin_phrase(pin: int, label: str) -> str:
 EXTRA_PHRASES = ("Voice on.", "Finished. Tie off the thread.", "Paused.", "Resuming.")
 
 
+def change_phrase(color_name: str, tie_pin: int, start_pin: int, start_label: str) -> str:
+    """What the voice says at a colour change."""
+    return f"Tie off at pin {tie_pin}. Change to {color_name} thread and start at pin {start_pin}, {pin_phrase(start_pin, start_label)[len(f'Pin {start_pin}. '):]}"
+
+
 class VoiceService:
     def __init__(self, piper_url: str, cache_dir: Path, default_voice: str = "en_US-lessac-medium"):
         self.url = (piper_url or "").rstrip("/")

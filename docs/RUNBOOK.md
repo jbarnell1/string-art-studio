@@ -104,6 +104,15 @@ can also travel as a bundle ZIP from the results page.
 4. Generate engine A. Expect it to use the whole 4,000-line budget on a portrait; the "regrown"
    number in the metrics table shows the lines added after the local search.
 
+## Colour plans
+
+Pick a palette in the Board panel (or Auto to take colours from the photo); the preview turns to
+colour and the swatches show the build order, lightest first. Colour plans run on engine A and take
+about three times as long as a single thread (two to three minutes for 4,000 lines on the media PC).
+In build mode the current colour sits in the top bar and the player stops at each change: tie off,
+change thread, tie on at the pin shown, press Next. Buy one spool per colour; the metrics table
+gives the thread per colour.
+
 ## Calibration after the pilot build
 
 1. Measure the thread: wrap ten turns around a ruler, divide by ten, enter it as thread width.

@@ -29,7 +29,8 @@ from stringart.exports import sequence as seq_mod
 from stringart.exports import template_pdf
 from stringart import faces as faces_mod
 from stringart.jobs import JobManager
-from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, pin_phrase
+from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, change_phrase, pin_phrase
+from stringart.engine.color import PALETTE_PRESETS, color_name
 from stringart.prep import (PrepSettings, background_removal_available, encode_source_jpeg, load_source,
                             preview_jpeg)
 
@@ -193,6 +194,26 @@ def _read_sequence(ctx: Context, run: dict[str, Any]) -> list[int]:
     if not p.exists():
         raise HTTPException(409, "run has no sequence yet")
     return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _read_layers(ctx: Context, run: dict[str, Any]) -> list[dict[str, Any]]:
+    """Thread layers in build order: layers.json for colour runs, else the flat sequence as one layer."""
+    files = ctx.jobs.files(run["project_id"])
+    p = files.layers(run["id"])
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    board = BoardConfig.from_dict(run["board"])
+    return [{"name": color_name(board.thread_color), "color": board.thread_color, "sequence": _read_sequence(ctx, run)}]
+
+
+def _change_phrases(board: BoardConfig, layers: list[dict[str, Any]]) -> list[str]:
+    """One phrase per colour change (before layer 1, 2, ...): tie off, change, start."""
+    out = []
+    for prev, layer in zip(layers[:-1], layers[1:]):
+        tie = int(prev["sequence"][-1]) if prev["sequence"] else 0
+        start = int(layer["sequence"][0]) if layer["sequence"] else 0
+        out.append(change_phrase(layer["name"], tie, start, board.sector_label(start)))
+    return out
 
 
 def weight_overlay_png(w) -> bytes:
@@ -367,10 +388,23 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         board = BoardConfig.from_dict(body.board)
         size = max(200, min(body.size, 1200))
         try:
-            gray = ctx.jobs.build_target(pid, prep, board, size)
+            img = ctx.jobs.build_target_rgb(pid, prep, board, size) if board.is_color else ctx.jobs.build_target(pid, prep, board, size)
         except FileNotFoundError:
             raise HTTPException(404, "no image") from None
-        return Response(preview_jpeg(gray), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        return Response(preview_jpeg(img), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/projects/{pid}/palette")
+    def resolve_palette(pid: str, body: PreviewIn, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
+        """The thread colours a run with these settings would use, in build order, with names."""
+        _project_or_404(ctx, pid)
+        prep = PrepSettings.from_dict(body.prep)
+        board = BoardConfig.from_dict(body.board)
+        try:
+            colors = ctx.jobs.resolve_palette(pid, prep, board)
+        except FileNotFoundError:
+            colors = [board.thread_color] if not board.palette else list(board.palette)
+        return {"colors": [{"color": c, "name": color_name(c)} for c in colors], "is_color": board.is_color,
+                "presets": PALETTE_PRESETS}
 
     # Runs ------------------------------------------------------------------------------------
 
@@ -384,6 +418,8 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         params = EngineParams.from_dict(body.params if body.params is not None else project["engine"]).to_dict()
         ctx.db.update_project(pid, prep=prep, board=board, engine=params)
         engines = ["a", "b"] if body.engine == "both" else [body.engine if body.engine in ("a", "b") else "a"]
+        if BoardConfig.from_dict(board).is_color:
+            engines = ["a"]   # colour runs use engine A only (ADR-017)
         group = new_id() if len(engines) > 1 else ""
         runs = []
         for eng in engines:
@@ -484,29 +520,37 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
     @app.get("/api/runs/{rid}/sequence.{fmt}")
     def run_sequence(rid: str, fmt: str, ctx: Context = Depends(get_ctx)) -> Response:
         run = _run_or_404(ctx, rid)
-        seq = _read_sequence(ctx, run)
+        layers = _read_layers(ctx, run)
         board = BoardConfig.from_dict(run["board"])
         stem = f"stringart-{rid}-sequence"
         if fmt == "json":
-            return _attachment(seq_mod.sequence_json(board, seq), f"{stem}.json", "application/json")
+            return _attachment(seq_mod.sequence_json(board, layers), f"{stem}.json", "application/json")
         if fmt == "csv":
-            return _attachment(seq_mod.sequence_csv(board, seq), f"{stem}.csv", "text/csv")
+            return _attachment(seq_mod.sequence_csv(board, layers), f"{stem}.csv", "text/csv")
         if fmt == "txt":
-            return _attachment(seq_mod.sequence_txt(board, seq), f"{stem}.txt", "text/plain")
+            return _attachment(seq_mod.sequence_txt(board, layers), f"{stem}.txt", "text/plain")
         raise HTTPException(404, "format must be json, csv or txt")
 
     @app.get("/api/runs/{rid}/steps")
     def run_steps(rid: str, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
         """Everything build mode needs in one call."""
         run = _run_or_404(ctx, rid)
-        seq = _read_sequence(ctx, run)
+        layers = _read_layers(ctx, run)
         board = BoardConfig.from_dict(run["board"])
-        est = thread_estimate(board, seq)
+        seq = [int(p) for layer in layers for p in layer["sequence"]]
+        starts, offset = [], 0
+        for layer in layers:
+            starts.append(offset)
+            offset += len(layer["sequence"])
         labels = [board.sector_label(i) for i in range(board.pin_count)]
         return {"run_id": rid, "project_id": run["project_id"], "sequence": seq, "pin_count": board.pin_count,
                 "sector_count": board.sector_count, "labels": labels,
+                "layers": [{"name": l["name"], "color": l["color"], "start": s, "lines": max(len(l["sequence"]) - 1, 0)}
+                           for l, s in zip(layers, starts)],
+                "change_phrases": _change_phrases(board, layers),
                 "phrases": [pin_phrase(i, lab) for i, lab in enumerate(labels)], "extra_phrases": list(EXTRA_PHRASES),
-                "thread": est.to_dict(), "progress": ctx.db.get_progress(rid), "metrics": run["metrics"]}
+                "thread": seq_mod.layers_thread_estimate(board, layers), "progress": ctx.db.get_progress(rid),
+                "metrics": run["metrics"]}
 
     # Voice (Piper) ------------------------------------------------------------------------------
 
@@ -531,8 +575,9 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         if not ctx.voice.status()["available"]:
             raise HTTPException(503, "voice server not available")
         board = BoardConfig.from_dict(run["board"])
-        pins = sorted(set(_read_sequence(ctx, run)))
-        phrases = [pin_phrase(i, board.sector_label(i)) for i in pins] + list(EXTRA_PHRASES)
+        layers = _read_layers(ctx, run)
+        pins = sorted({int(p) for layer in layers for p in layer["sequence"]})
+        phrases = [pin_phrase(i, board.sector_label(i)) for i in pins] + list(EXTRA_PHRASES) + _change_phrases(board, layers)
         return ctx.voice.prewarm(phrases, body.voice, body.speed)
 
     @app.get("/api/voice/prewarm/{job_id}")
@@ -597,6 +642,9 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
             p = ctx.jobs.files(pid).run_dir(run["id"]) / "sequence.json"
             run = dict(run)
             run["sequence"] = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+            lp = ctx.jobs.files(pid).layers(run["id"])
+            if lp.exists():
+                run["layers"] = json.loads(lp.read_text(encoding="utf-8"))
             runs.append(run)
         files = ctx.jobs.files(pid)
         src = files.source
@@ -638,9 +686,13 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
                                     label=str(run.get("label", ""))[:80])
             out = files.run_dir(new["id"])
             (out / "sequence.json").write_text(json.dumps([int(p) for p in seq]), encoding="utf-8")
+            layers = run.get("layers") or None
+            if layers:
+                (out / "layers.json").write_text(json.dumps(layers), encoding="utf-8")
             try:
-                from stringart.engine.render import encode_png, render_rgb
-                (out / "render.png").write_bytes(encode_png(render_rgb(BoardConfig.from_dict(board), seq, 1000)))
+                from stringart.engine.render import encode_png, render_layers_rgb
+                bcfg = BoardConfig.from_dict(board)
+                (out / "render.png").write_bytes(encode_png(render_layers_rgb(bcfg, layers or [{"color": bcfg.thread_color, "sequence": seq}], 1000)))
             except Exception:  # noqa: BLE001
                 pass
             ctx.db.set_run_status(new["id"], "done", metrics=run.get("metrics") or {})

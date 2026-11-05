@@ -21,13 +21,15 @@ import numpy as np
 from stringart.board import BoardConfig, thread_estimate
 from stringart.config import Settings
 from stringart.db import Database
+from stringart.engine.color import ColorState, auto_palette, color_name, palette_order, run_color_greedy
 from stringart.engine.greedy import run_greedy
-from stringart.engine.render import comparison_image, encode_jpeg, encode_png, render_rgb
+from stringart.engine.render import comparison_image, encode_jpeg, encode_png, render_layers_rgb
+from stringart.exports.sequence import layers_thread_estimate
 from stringart.engine.setcover import run_setcover
 from stringart.engine.state import EngineParams, RenderState
 from stringart.faces import auto_importance, detect_faces, portrait_frame
 from stringart.prep import (PrepSettings, board_weight, decode_mask_png, load_source, prepare_target,
-                            remove_background)
+                            prepare_target_rgb, remove_background)
 
 log = logging.getLogger("stringart.jobs")
 
@@ -61,6 +63,9 @@ class ProjectFiles:
     @property
     def faces(self) -> Path:
         return self.root / "faces.json"
+
+    def layers(self, run_id: str) -> Path:
+        return self.runs / run_id / "layers.json"
 
     def run_dir(self, run_id: str) -> Path:
         d = self.runs / run_id
@@ -182,6 +187,28 @@ class JobManager:
             pass
         return out
 
+    def build_target_rgb(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int) -> np.ndarray:
+        files = self.files(project_id)
+        src = files.source
+        if src is None:
+            raise FileNotFoundError("project has no image")
+        rgb = self.images.get(src)
+        alpha = self.subject_alpha(project_id, rgb, compute=prep.background_removal) if prep.background_removal else None
+        return prepare_target_rgb(rgb, prep, board, res, subject_alpha=alpha)
+
+    def resolve_palette(self, project_id: str, prep: PrepSettings, board: BoardConfig, target_rgb: np.ndarray | None = None,
+                        weight: np.ndarray | None = None) -> list[str]:
+        """Thread colours in build order for this board: the chosen palette, or k-means from the photo."""
+        if not board.is_color:
+            return [board.thread_color]
+        if board.palette_auto >= 2:
+            if target_rgb is None:
+                target_rgb = self.build_target_rgb(project_id, prep, board, 400)
+            colors = auto_palette(target_rgb, board.palette_auto, weight, board_color=board.board_color)
+        else:
+            colors = list(board.palette)
+        return palette_order(colors, board.invert)
+
     def build_weight(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int,
                      gray: np.ndarray | None = None) -> np.ndarray:
         """Weights as the optimiser uses them: rim fade, painted mask, detected faces, structure."""
@@ -235,12 +262,23 @@ class JobManager:
             res = board.work_res
             gray = self.build_target(project_id, prep, board, res)
             weight = self.build_weight(project_id, prep, board, res, gray=gray)
-            state = RenderState(gray, weight, board, light_protection=params.light_protection,
-                                objective=params.objective)
-            state.cancel_check = prog.cancel.is_set
+            color = board.is_color
+            target_rgb = self.build_target_rgb(project_id, prep, board, res) if color else None
+            colors = self.resolve_palette(project_id, prep, board, target_rgb, weight) if color else [board.thread_color]
+            if color:
+                cstate = ColorState(target_rgb, weight, board, colors)
+                cstate.cancel_check = prog.cancel.is_set
+                state = None
+                # A colour plan costs about three times a single thread per line (ADR-017).
+                params.time_budget_s = min(params.time_budget_s * 3.0, 3600.0)
+            else:
+                state = RenderState(gray, weight, board, light_protection=params.light_protection,
+                                    objective=params.objective)
+                state.cancel_check = prog.cancel.is_set
             # The target as the optimiser saw it, for the compare view.
-            (out / "target.jpg").write_bytes(encode_jpeg((np.clip(gray, 0, 1) * 255).astype(np.uint8)))
-            prog.publish({"phase": "generating", "status": "running"})
+            shown = target_rgb if color else gray
+            (out / "target.jpg").write_bytes(encode_jpeg((np.clip(shown, 0, 1) * 255).astype(np.uint8)))
+            prog.publish({"phase": "generating", "status": "running", "colors": colors})
             last_preview = [0.0]
 
             def on_progress(ev: dict[str, Any]) -> None:
@@ -255,30 +293,42 @@ class JobManager:
                 ev.setdefault("status", "running")
                 prog.publish(ev)
 
-            result = run_greedy(state, params, on_progress) if params.engine == "a" else run_setcover(state, params, on_progress)
+            if color:
+                seqs, result = run_color_greedy(cstate, params, on_progress)
+                layers = [{"name": color_name(c), "color": c, "sequence": [int(p) for p in s]} for c, s in zip(colors, seqs)]
+                layers = [layer for layer in layers if len(layer["sequence"]) >= 2] or layers[-1:]   # a colour with no lines is left out
+                sigma, a_pass, objective = cstate.sigma, cstate.a, "lab"
+            else:
+                result = run_greedy(state, params, on_progress) if params.engine == "a" else run_setcover(state, params, on_progress)
+                layers = [{"name": color_name(board.thread_color), "color": board.thread_color, "sequence": [int(p) for p in result.sequence]}]
+                sigma, a_pass, objective = state.sigma, state.a, state.objective
             if result.cancelled:
                 self.db.set_run_status(run_id, "cancelled", metrics=result.to_dict())
                 prog.publish({"phase": "cancelled", "status": "cancelled"})
                 return
             prog.publish({"phase": "rendering", "lines": result.line_count})
-            seq = [int(p) for p in result.sequence]
+            seq = [p for layer in layers for p in layer["sequence"]]
             (out / "sequence.json").write_text(json.dumps(seq), encoding="utf-8")
-            render = render_rgb(board, seq, self.settings.render_res)
+            if color:
+                (out / "layers.json").write_text(json.dumps(layers), encoding="utf-8")
+            render = render_layers_rgb(board, layers, self.settings.render_res)
             (out / "render.png").write_bytes(encode_png(render))
             sigma_px = (board.viewing_distance_m * board.blur_mm_per_m) / board.pixel_mm(self.settings.render_res)
-            cmp_img = comparison_image(gray, render, blur_sigma_px=0.0)
+            cmp_img = comparison_image(shown, render, blur_sigma_px=0.0)
             (out / "compare.jpg").write_bytes(encode_jpeg(cmp_img, quality=85))
-            cmp_blur = comparison_image(gray, render, blur_sigma_px=sigma_px)
+            cmp_blur = comparison_image(shown, render, blur_sigma_px=sigma_px)
             (out / "compare_blur.jpg").write_bytes(encode_jpeg(cmp_blur, quality=85))
-            estimate = thread_estimate(board, seq)
+            estimate = layers_thread_estimate(board, layers)
             metrics = result.to_dict()
             metrics.update({
-                "thread_with_margin_mm": estimate.with_margin_mm,
-                "spools_1000yd": estimate.spools,
+                "thread_with_margin_mm": estimate["with_margin_mm"],
+                "spools_1000yd": estimate["spools"],
                 "work_res": res,
-                "sigma_px": state.sigma,
-                "coverage_per_pass": state.a,
-                "objective": state.objective,
+                "sigma_px": sigma,
+                "coverage_per_pass": a_pass,
+                "objective": objective,
+                "layers": [{"name": layer["name"], "color": layer["color"], "lines": max(len(layer["sequence"]) - 1, 0),
+                            "thread_length_mm": board.sequence_length_mm(layer["sequence"])} for layer in layers],
             })
             self.db.set_run_status(run_id, "done", metrics=metrics)
             prog.publish({"phase": "done", "status": "done", "lines": result.line_count, "metrics": metrics,

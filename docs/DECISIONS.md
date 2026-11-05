@@ -4,6 +4,28 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-017 - Colour: one continuous thread per colour, layers composited in build order, CIELAB error
+**2026-11-05.** A colour plan is a list of layers, each a thread colour with its own pin sequence,
+laid lightest first and darkest last on a light board (the reverse on a dark one), because a dark
+thread must sit on top to stay dark. The simulation gives each layer its own saturating coverage
+and composites them in that order in linear light (what is above covers what is below in
+proportion to its coverage); after the viewing-distance blur the picture is compared with the
+photo in CIELAB scaled by 1/100, so a wrong hue costs as much as a wrong lightness and the single
+thread engine's numbers stay comparable. Layers are blurred before compositing, which treats
+threads of different colours as overlapping at random within the blur radius. The gradient of
+one colour is the chain rule through the Lab Jacobian and the layer's "below" and "above"
+composites, so the greedy walk keeps one current pin per colour and takes the best (colour, line)
+at every step; each colour starts at the pin with its best first line rather than at pin 0, all
+colours share the line budget, the local search runs per layer, and engine B
+is not offered for colour (its set-then-repair would need one repair per colour). Palettes are a
+preset set (CMYK, warm skin, earth, primary), a custom list of up to six, or k-means over the
+framed photo's Lab pixels with the darkest centre forced to black and any centre near the board
+colour dropped. A colour plan costs about three times a single-thread plan per line (K gradients
+and K fans per step); the default 240 s budget still covers 4,000 lines at 800 px. Build mode shows
+the colour and stops at each change ("tie off at pin 12, change to red thread, start at pin 40"),
+exports carry a layer and colour per step, and the run stores `layers.json` beside the flat
+sequence so older readers keep working.
+
 ### ADR-016 - Per-line work is a band, not a frame; fans are cached per pin
 **2026-11-05.** Profiling the v2 engine: scoring the 210 candidate lines from a pin took 5.8 ms
 (1.9 ms sampling the pixels, 3.2 ms gathering three images and forming d), and adding a long line

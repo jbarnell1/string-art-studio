@@ -90,10 +90,18 @@ def main() -> None:
     ap.add_argument("--lookahead", type=int, default=1)
     ap.add_argument("--search", default="polish", help="polish, refine or none")
     ap.add_argument("--objective", default="linear", help="linear or coverage")
+    ap.add_argument("--palette", default="", help="single, cmyk, warm, earth, primary, auto4, auto6 or hex,hex,...")
     ap.add_argument("--black", type=float, default=0.05)
     args = ap.parse_args()
 
     board = BoardConfig(pin_count=args.pins, max_lines=args.lines, work_res=args.res, thread_opacity=args.opacity)
+    if args.palette:
+        from stringart.engine.color import PALETTE_PRESETS
+        if args.palette.startswith("auto"):
+            board.palette_auto = int(args.palette[4:] or 4)
+        else:
+            board.palette = PALETTE_PRESETS.get(args.palette, args.palette.split(","))
+        board.validate()
     if args.crop == "auto" and args.image:
         from stringart.faces import portrait_frame
         src = load_source(Path(args.image).read_bytes())
@@ -118,6 +126,27 @@ def main() -> None:
     else:
         gray = synthetic_target(args.res)
     weight = board_weight(board, args.res, auto_importance=auto, gray=gray, structure_weight=args.structure)
+    if board.is_color and args.image:
+        from stringart.engine.color import ColorState, auto_palette, color_name, palette_order, run_color_greedy
+        from stringart.engine.render import render_layers_rgb
+        from stringart.prep import prepare_target_rgb
+        target_rgb = prepare_target_rgb(rgb, prep, board, args.res)
+        colors = auto_palette(target_rgb, board.palette_auto, weight, board_color=board.board_color) if board.palette_auto >= 2 else list(board.palette)
+        colors = palette_order(colors, board.invert)
+        print("palette", [(c, color_name(c)) for c in colors])
+        cstate = ColorState(target_rgb, weight, board, colors)
+        params = EngineParams(engine="a", refine_seconds=args.refine, time_budget_s=900, local_search=args.search)
+        t0 = time.perf_counter()
+        seqs, result = run_color_greedy(cstate, params, lambda ev: None)
+        dt = time.perf_counter() - t0
+        print(f"colour lines={[len(s) - 1 for s in seqs]} error {result.error_initial:.4f} -> {result.error:.4f} "
+              f"thread={result.thread_length_mm / 1000:.0f} m time={dt:.1f}s stop={result.stop_reason} refined={result.refined_changes} regrown={result.regrown_lines}")
+        if args.out:
+            layers = [{"color": c, "sequence": s} for c, s in zip(colors, seqs)]
+            rgb_out = render_layers_rgb(board, layers, 1200)
+            Path(args.out).write_bytes(encode_png(comparison_image(target_rgb, rgb_out, blur_sigma_px=0)))
+            print("wrote", args.out)
+        return
     state = RenderState(gray, weight, board, light_protection=args.protect, objective=args.objective)
     print(f"res={args.res} a={state.a:.3f} sigma={state.sigma:.2f}px k={state.k:.3f} faces={len(faces)} "
           f"weight mean={weight.mean():.3f} max={weight.max():.2f}")

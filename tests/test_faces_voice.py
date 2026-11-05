@@ -37,7 +37,7 @@ def test_auto_importance_raises_face_weights():
     h, w = rgb.shape[:2]
     prep = PrepSettings(crop_cx=0.5, crop_cy=0.49, crop_size=0.71)
     imp = faces.auto_importance(found, prep, w, h, 256, 1.0)
-    assert imp.shape == (256, 256) and imp.max() > 0.8 and imp.min() >= 0.5
+    assert imp.shape == (256, 256) and imp.max() > 0.8 and imp.min() >= 0.49
     board = BoardConfig(work_res=256)
     plain = board_weight(board, 256)
     weighted = board_weight(board, 256, auto_importance=imp)

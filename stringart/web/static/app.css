@@ -220,6 +220,14 @@ table.data tr.clickable:hover td { background: var(--raised); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--control); background: var(--surface); cursor: pointer; font-size: var(--fs-small); }
 .chip:hover { background: var(--raised); }
+.chip[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.swatches, .palette-custom { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; }
+.swatch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-small); }
+.swatch i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--control); }
+.swatch input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--control); border-radius: 4px; background: none; }
+.color-tag { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-small); color: var(--muted); }
+.color-tag i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--control); }
+.build-main .swatch-big { width: clamp(96px, 28vw, 180px); height: clamp(96px, 28vw, 180px); border-radius: 50%; border: 2px solid var(--control); margin: 12px auto; }
 
 /* Compare ---------------------------------------------------------------------------------- */
 .compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--gap); }

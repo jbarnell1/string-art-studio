@@ -29,6 +29,10 @@ class BoardConfig:
     blur_mm_per_m: float = 1.5
     sector_count: int = 8
     work_res: int = 800
+    # Colour (v3): thread colours as hex. Empty or one entry means a single thread in thread_color.
+    # palette_auto >= 2 picks that many colours from the photo (always including the darkest).
+    palette: list = field(default_factory=list)
+    palette_auto: int = 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "BoardConfig":
@@ -55,6 +59,21 @@ class BoardConfig:
         self.blur_mm_per_m = float(min(max(self.blur_mm_per_m, 0.2), 6.0))
         self.sector_count = int(min(max(self.sector_count, 1), 26))
         self.work_res = int(min(max(self.work_res, 300), 2400))
+        self.thread_color = normalize_hex(self.thread_color, "#161616")
+        self.board_color = normalize_hex(self.board_color, "#f6f3ee")
+        clean = []
+        for c in list(self.palette or [])[:6]:
+            h = normalize_hex(str(c), "")
+            if h and h not in clean:
+                clean.append(h)
+        self.palette = clean
+        self.palette_auto = int(min(max(int(self.palette_auto or 0), 0), 6))
+        if self.palette_auto == 1:
+            self.palette_auto = 0
+
+    @property
+    def is_color(self) -> bool:
+        return self.palette_auto >= 2 or len(self.palette) >= 2
 
     # Geometry -------------------------------------------------------------------------------
 
@@ -143,6 +162,16 @@ def thread_estimate(board: BoardConfig, sequence: list[int], spool_yards: float 
     spool_mm = spool_yards * 914.4
     spools = int(math.ceil(with_margin / spool_mm)) if with_margin > 0 else 0
     return ThreadEstimate(length, with_margin, spools, spool_mm, margin)
+
+
+def normalize_hex(value: str, default: str) -> str:
+    """'#rgb' or '#rrggbb' in any case to lower-case '#rrggbb'; default when it does not parse."""
+    v = (value or "").strip().lstrip("#").lower()
+    if len(v) == 3:
+        v = "".join(ch * 2 for ch in v)
+    if len(v) != 6 or any(ch not in "0123456789abcdef" for ch in v):
+        return default
+    return "#" + v
 
 
 def mm_to_in(value_mm: float) -> float:

@@ -51,6 +51,16 @@ candidate is two gathers along its pixels. The light-protection factor scales th
 `R` (ADR-006; 1.0, strict, is the default since ADR-014). Reported error is the symmetric weighted
 RMS of lightness in [0, 1]. The v1 objective (`objective: "coverage"`) is kept for comparison.
 
+## Colour
+
+With a palette (`BoardConfig.palette` or `palette_auto`, ADR-017) `engine/color.py` takes over:
+`ColorState` holds one coverage layer per thread colour, composites them in build order in linear
+RGB, and measures the error in CIELAB (scaled by 1/100) after the blur. `run_color_greedy` keeps
+one current pin per colour, takes the best (colour, line) each step, then polishes each layer with
+the same local search through a `LayerView`. The run writes `layers.json`
+(`[{name, color, sequence}]` in build order) beside the flat `sequence.json`; `steps`, the exports
+and the renderer read layers, and a single-thread run is one layer.
+
 ## Engines
 
 Engine A (`greedy.py`): from the current pin score every allowed next pin, take the best, repeat.
@@ -90,6 +100,7 @@ All under `/api`. `GET /api/docs` is the live OpenAPI page.
 | `PUT/GET /projects/{id}/mask` | Painted importance mask (512 px grayscale PNG) |
 | `POST /projects/{id}/preview` | Live target preview JPEG for given prep and board |
 | `GET /projects/{id}/faces` | Detected faces (normalised source coordinates) and a suggested frame |
+| `POST /projects/{id}/palette` | The thread colours a run would use (build order, names) for given prep and board |
 | `POST /projects/{id}/weightmap` | The importance weights as a PNG overlay (red more, blue less) |
 | `POST /projects/{id}/runs` | Start engine a, b or both (both share a group_id) |
 | `GET /runs/{id}`, `GET .../events` (SSE), `POST .../cancel`, `PATCH`, `DELETE` | Run status and control |
@@ -122,6 +133,7 @@ data/
     faces.json              cached face detection for source.jpg
     runs/<run id>/
       target.jpg  live.jpg  sequence.json  render.png  compare.jpg  compare_blur.jpg
+      layers.json             colour runs: [{name, color, sequence}] in build order
 ```
 
   voice/<voice>/<hash>.wav  Piper clips, keyed by voice, speed and text (safe to delete)

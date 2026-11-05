@@ -29,6 +29,7 @@ stringart/
   engine/state.py The shared objective (RenderState): target, weights, coverage, gradient image G.
   engine/greedy.py   Engine A: greedy with error scoring, two-line bridge, local search, regrow.
   engine/polish.py   Local search: one gain matrix prices replace/insert/delete/unfold moves, each verified exactly.
+  engine/color.py    Colour: per-colour layers composited in build order, CIELAB error, palettes, greedy over (colour, line).
   engine/setcover.py Engine B: chord multiset, prune, parity repair, Euler path.
   engine/render.py   Final thread-accurate render and the comparison image.
   exports/        Pin template PDF, SVG/DXF fab files, sequence TXT/CSV/JSON, project bundle ZIP.
@@ -58,6 +59,6 @@ deploy/           Media PC install script, Tailscale serve owner step, Homepage 
   tool or use forward slashes.
 - Deployment target: media PC WSL distro `homelab`, Docker Compose, `/mnt/c/homelab/string-art-studio`,
   loopback 8050, Tailscale serve path `/stringart` (owner step). See `docs/RUNBOOK.md`.
-- Sample photos in `samples/` are AI-generated fictional people and a dog; they are safe to publish.
+- Sample photos in `samples/` are AI-generated fictional people (one in colour) and a dog; they are safe to publish.
 - Local voice testing: `.env.dev` (ignored) holds `SAS_PIPER_URL=http://127.0.0.1:5000`; build the
   Piper image from `deploy/piper` in WSL and run it with `-p 127.0.0.1:5000:5000`.

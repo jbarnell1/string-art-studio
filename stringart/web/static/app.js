@@ -707,7 +707,9 @@
     const finding = el("div", { class: "finding" }, "");
     sheet.append(el("div", { class: "title-row" }, [el("div", {}, [title, finding])]));
 
-    // Cards: target + one per run.
+    // Cards: target + one per run. The metrics box exists first because a finished run fills it
+    // while its card is being built.
+    const metricsBox = el("div");
     let viewBlur = false;
     const grid = el("div", { class: "compare-grid" });
     // The target is written a moment after the run starts; retry until it exists.
@@ -757,7 +759,6 @@
     sheet.append(el("div", { class: "btn-row", style: "margin:16px 0 8px;align-items:center" }, [blurBtn, withSelect, el("span", { style: "flex:1" }), renameBtn, deleteBtn]));
 
     // Metrics table.
-    const metricsBox = el("div");
     sheet.append(el("h2", { class: "section", style: "margin-top:24px" }, "Numbers"), metricsBox);
     function renderMetrics() {
       const rows = [

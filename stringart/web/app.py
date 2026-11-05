@@ -201,7 +201,10 @@ def _read_layers(ctx: Context, run: dict[str, Any]) -> list[dict[str, Any]]:
     files = ctx.jobs.files(run["project_id"])
     p = files.layers(run["id"])
     if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
+        layers = json.loads(p.read_text(encoding="utf-8"))
+        # A colour that got no lines is not a layer anyone strings.
+        used = [layer for layer in layers if len(layer.get("sequence") or []) >= 2]
+        return used or layers[-1:]
     board = BoardConfig.from_dict(run["board"])
     return [{"name": color_name(board.thread_color), "color": board.thread_color, "sequence": _read_sequence(ctx, run)}]
 

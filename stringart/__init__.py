@@ -1,3 +1,3 @@
 """String Art Studio: turns a photo into a pin-and-thread build plan."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

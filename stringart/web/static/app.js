@@ -25,7 +25,12 @@
     }
     return node;
   };
-  const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+  const debounce = (fn, ms) => {
+    let t = null, args = null;
+    const run = (...a) => { clearTimeout(t); args = a; t = setTimeout(() => { t = null; fn(...args); }, ms); };
+    run.flush = () => { if (t) { clearTimeout(t); t = null; fn(...args); } };
+    return run;
+  };
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const MM_PER_IN = 25.4;
   const fmt = {
@@ -124,7 +129,7 @@
 
   async function route() {
     teardown();
-    const hash = location.hash || "#/";
+    const hash = (location.hash || "#/").split("?")[0];
     const parts = hash.slice(2).split("/").filter(Boolean);
     try {
       if (parts.length === 0) await viewLibrary();
@@ -162,7 +167,7 @@
     }
     const table = el("table", { class: "data" }, [
       el("thead", {}, el("tr", {}, [el("th", {}, ""), el("th", {}, "Project"), el("th", { class: "num" }, "Plans"), el("th", { class: "hide-phone" }, "Latest plan"), el("th", { class: "hide-phone" }, "Updated")])),
-      el("tbody", {}, projects.map((p) => el("tr", { class: "clickable", onclick: () => { location.hash = `#/p/${p.id}`; } }, [
+      el("tbody", {}, projects.map((p) => el("tr", { class: "clickable", tabindex: 0, role: "link", onclick: () => { location.hash = `#/p/${p.id}`; }, onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); location.hash = `#/p/${p.id}`; } } }, [
         el("td", { style: "width:68px" }, p.has_image ? el("img", { class: "thumb", src: `api/projects/${p.id}/image?size=160&t=${Math.floor(p.updated_at)}`, alt: "" }) : el("div", { class: "thumb placeholder" }, "no photo")),
         el("td", {}, [el("div", { style: "font-weight:500" }, p.name), p.notes ? el("div", { class: "muted", style: "font-size:12px" }, p.notes.slice(0, 80)) : null]),
         el("td", { class: "num" }, fmt.int(p.run_count)),
@@ -272,14 +277,16 @@
     }, 600);
 
     // ---- Preview stage ------------------------------------------------------------------------
-    const stage = el("div", { class: "preview-stage", title: "Drag to move the photo, scroll to zoom" });
-    const img = el("img", { alt: "Target preview: the image as the engine will see it" });
+    const COARSE = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    const HINT_MOVE = COARSE ? "Drag to move, pinch to zoom" : "Drag to move, scroll to zoom";
+    const stage = el("div", { class: "preview-stage", "aria-label": "Preview. Drag to move the photo, scroll or pinch to zoom" });
+    const img = el("img", { alt: "Target preview: the image as the engine will see it", draggable: "false" });
     const maskView = el("canvas", { class: "mask", width: 512, height: 512 });
     const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     overlay.setAttribute("viewBox", "0 0 1000 1000");
     const busy = el("span", { class: "pill busy hidden" }, "Updating");
-    const hint = el("span", { class: "hint" }, project.has_image ? "Drag to move, scroll to zoom" : "No photo yet");
-    const weightsImg = el("img", { class: "weights hidden", alt: "" });
+    const hint = el("span", { class: "hint" }, project.has_image ? HINT_MOVE : "No photo yet");
+    const weightsImg = el("img", { class: "weights hidden", alt: "", draggable: "false" });
     stage.append(img, maskView, weightsImg, overlay, busy, hint);
     let showWeights = false;
     let weightsUrl = null;
@@ -294,6 +301,11 @@
       } catch (_) { /* overlay is informational */ }
     }, 200);
     state.cleanup.push(() => { if (weightsUrl) URL.revokeObjectURL(weightsUrl); });
+    // Pending edits must not die with the tab: flush on route change and when the page hides.
+    const flushSave = () => { save.flush(); if (typeof saveMask === "function") saveMask.flush(); };
+    window.addEventListener("pagehide", flushSave);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
+    state.cleanup.push(() => { window.removeEventListener("pagehide", flushSave); flushSave(); });
     previewCol.append(stage);
 
     let viewBlur = false;
@@ -325,14 +337,38 @@
 
     let previewSeq = 0;
     let lastUrl = null;
-    const requestPreview = debounce(async () => {
+    // While the server renders a new preview the picture follows the pointer through a CSS
+    // transform ("view": displayed = s * p + t in stage pixels). When a preview arrives, the part
+    // of the view that it already contains is removed, so the picture never snaps back.
+    const view = { s: 1, tx: 0, ty: 0 };
+    let viewAtRequest = { s: 1, tx: 0, ty: 0 };
+    function applyView() {
+      const t = view.s === 1 && view.tx === 0 && view.ty === 0 ? "" : `translate(${view.tx.toFixed(2)}px, ${view.ty.toFixed(2)}px) scale(${view.s.toFixed(4)})`;
+      img.style.transform = t;
+      weightsImg.style.transform = t;
+    }
+    function zoomView(z, qx, qy) { view.s *= z; view.tx = z * view.tx + (1 - z) * qx; view.ty = z * view.ty + (1 - z) * qy; }
+    img.addEventListener("load", () => {
+      const b = viewAtRequest;
+      const s = view.s / b.s;
+      view.s = s; view.tx -= s * b.tx; view.ty -= s * b.ty;
+      viewAtRequest = { s: 1, tx: 0, ty: 0 };
+      applyView();
+    });
+    let inflight = false;
+    let lastRequest = 0;
+    async function fetchPreview() {
       if (!project.has_image) return;
       const seq = ++previewSeq;
+      const snapshot = { s: view.s, tx: view.tx, ty: view.ty };
+      inflight = true;
+      lastRequest = performance.now();
       busy.classList.remove("hidden");
       try {
         const blob = await api.blob(`api/projects/${pid}/preview`, { prep, board, size: 640 });
         if (seq !== previewSeq) return;
         const url = URL.createObjectURL(blob);
+        viewAtRequest = snapshot;
         img.src = url;
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = url;
@@ -340,41 +376,111 @@
       } catch (err) {
         if (seq === previewSeq) toast("Preview failed: " + err.message);
       } finally {
-        if (seq === previewSeq) busy.classList.add("hidden");
+        if (seq === previewSeq) { busy.classList.add("hidden"); inflight = false; }
       }
-    }, 120);
+    }
+    const requestPreview = debounce(fetchPreview, 120);
+    // During a gesture: a fresh frame as soon as the previous one is back, else the usual debounce.
+    const previewLive = () => { if (!inflight && performance.now() - lastRequest > 150) fetchPreview(); else requestPreview(); };
     state.cleanup.push(() => { if (lastUrl) URL.revokeObjectURL(lastUrl); });
 
     const changed = () => { save(); requestPreview(); };
 
-    // Pan and zoom on the stage. Panning ignores rotation; that is fine for a nudge.
-    let drag = null;
+    // ---- Pan and zoom: the frame moves in source space, rotation included -----------------------
+    const imgW = () => project.image_width || 1;
+    const imgH = () => project.image_height || 1;
+    const shortSide = () => Math.min(imgW(), imgH());
+    const snapshotPrep = () => ({ crop_cx: prep.crop_cx, crop_cy: prep.crop_cy, crop_size: prep.crop_size, rotation: prep.rotation || 0 });
+    // Pan by a stage-fraction delta (fx, fy): the picture moves with the pointer, so the frame
+    // centre moves the other way, rotated by the frame's rotation (the same affine as prep.frame_matrix).
+    function panModel(base, fx, fy) {
+      const th = base.rotation * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+      const side = base.crop_size * shortSide();
+      prep.crop_cx = clamp(base.crop_cx - (c * fx - s * fy) * side / imgW(), 0, 1);
+      prep.crop_cy = clamp(base.crop_cy - (s * fx + c * fy) * side / imgH(), 0, 1);
+    }
+    // Multiply the frame size by k about the stage point (fu, fv), keeping that source point still.
+    function zoomModel(base, k, fu, fv) {
+      const th = base.rotation * Math.PI / 180, c = Math.cos(th), s = Math.sin(th);
+      const side = base.crop_size * shortSide();
+      const U = fu - 0.5, V = fv - 0.5;
+      const dx = (c * U - s * V) * side, dy = (s * U + c * V) * side;
+      const size = clamp(base.crop_size * k, 0.05, 3);
+      const kk = size / base.crop_size;
+      prep.crop_size = size;
+      prep.crop_cx = clamp(base.crop_cx - (kk - 1) * dx / imgW(), 0, 1);
+      prep.crop_cy = clamp(base.crop_cy - (kk - 1) * dy / imgH(), 0, 1);
+      return kk;
+    }
+    const syncFrame = () => { syncField("crop_cx"); syncField("crop_cy"); syncField("crop_size"); };
+    const stagePx = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const pointers = new Map();   // active pointers on the stage, id -> stage px
+    let gesture = null;           // {base, c0, d0, view0}
+    const centroid = (pts) => ({ x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length });
+    const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    function gestureStart() {
+      const pts = [...pointers.values()];
+      gesture = { base: snapshotPrep(), c0: centroid(pts), d0: pts.length > 1 ? distance(pts[0], pts[1]) : 0, view0: { s: view.s, tx: view.tx, ty: view.ty } };
+    }
+    function gestureMove() {
+      const pts = [...pointers.values()];
+      const c = centroid(pts);
+      const r = stage.getBoundingClientRect();
+      let z = 1;
+      if (pts.length > 1 && gesture.d0 > 0) z = clamp(distance(pts[0], pts[1]) / gesture.d0, 0.2, 5);
+      // Model: a pinch is a zoom about the first centroid, then a pan by the centroid's travel.
+      const kk = zoomModel(gesture.base, 1 / z, gesture.c0.x / r.width, gesture.c0.y / r.height);
+      panModel(snapshotPrep(), (c.x - gesture.c0.x) / r.width, (c.y - gesture.c0.y) / r.height);
+      const zv = 1 / kk;   // what the picture really does once the size clamps
+      const v0 = gesture.view0;
+      view.s = zv * v0.s; view.tx = zv * v0.tx + c.x - zv * gesture.c0.x; view.ty = zv * v0.ty + c.y - zv * gesture.c0.y;
+      applyView();
+      syncFrame();
+      previewLive();
+      save();
+    }
+    stage.addEventListener("dragstart", (e) => e.preventDefault());
     stage.addEventListener("pointerdown", (e) => {
-      if (maskMode) return paintStart(e);
       if (!project.has_image) return;
-      drag = { x: e.clientX, y: e.clientY, cx: prep.crop_cx, cy: prep.crop_cy };
-      stage.setPointerCapture(e.pointerId);
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      if (maskMode) return paintStart(e);
+      try { stage.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ }
+      pointers.set(e.pointerId, stagePx(e));
+      gestureStart();
+      stage.classList.add("dragging");
     });
     stage.addEventListener("pointermove", (e) => {
       if (maskMode) return paintMove(e);
-      if (!drag) return;
-      const short = Math.min(project.image_width, project.image_height) || 1;
-      const side = prep.crop_size * short;
-      const fx = (e.clientX - drag.x) / stage.clientWidth, fy = (e.clientY - drag.y) / stage.clientHeight;
-      prep.crop_cx = clamp(drag.cx - fx * side / project.image_width, 0, 1);
-      prep.crop_cy = clamp(drag.cy - fy * side / project.image_height, 0, 1);
-      syncField("crop_cx"); syncField("crop_cy");
-      changed();
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, stagePx(e));
+      gestureMove();
     });
-    const endDrag = (e) => { if (maskMode) return paintEnd(e); drag = null; };
+    const endDrag = (e) => {
+      if (maskMode) return paintEnd(e);
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      if (pointers.size) { gestureStart(); return; }   // one finger left: carry on from here
+      gesture = null;
+      stage.classList.remove("dragging");
+      changed();
+    };
     stage.addEventListener("pointerup", endDrag);
     stage.addEventListener("pointercancel", endDrag);
     stage.addEventListener("wheel", (e) => {
       if (!project.has_image || maskMode) return;
       e.preventDefault();
-      prep.crop_size = clamp(prep.crop_size * (e.deltaY > 0 ? 1.05 : 0.95), 0.05, 3);
-      syncField("crop_size");
-      changed();
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 16; else if (e.deltaMode === 2) dy *= stage.clientHeight;
+      const k = Math.exp(clamp(dy, -400, 400) * 0.0015);   // wheel away from you zooms out
+      const p = stagePx(e);
+      const r = stage.getBoundingClientRect();
+      const kk = zoomModel(snapshotPrep(), k, p.x / r.width, p.y / r.height);
+      zoomView(1 / kk, p.x, p.y);
+      applyView();
+      syncFrame();
+      previewLive();
+      save();
     }, { passive: false });
 
     // ---- Importance mask (painted on the framed preview, saved as a 512 px PNG) ----------------
@@ -384,7 +490,7 @@
     const mctx = maskCanvas.getContext("2d", { willReadFrequently: true });
     mctx.fillStyle = "#808080"; mctx.fillRect(0, 0, 512, 512);
     let brush = { size: 40, mode: "more" };
-    let painting = false, maskDirty = false;
+    let painting = false, maskDirty = false, lastPaint = null, maskFrame = 0;
     if (project.has_mask) {
       const m = new Image();
       m.onload = () => { mctx.drawImage(m, 0, 0, 512, 512); renderMaskView(); };
@@ -403,20 +509,27 @@
       }
       vctx.putImageData(out, 0, 0);
     }
+    const scheduleMaskView = () => { if (!maskFrame) maskFrame = requestAnimationFrame(() => { maskFrame = 0; renderMaskView(); }); };
     const stagePoint = (e) => {
       const r = stage.getBoundingClientRect();
       return { x: (e.clientX - r.left) / r.width * 512, y: (e.clientY - r.top) / r.height * 512 };
     };
+    const brushColor = () => (brush.mode === "more" ? "#ffffff" : brush.mode === "less" ? "#000000" : "#808080");
     function paintAt(p) {
       mctx.globalCompositeOperation = "source-over";
-      mctx.fillStyle = brush.mode === "more" ? "#ffffff" : brush.mode === "less" ? "#000000" : "#808080";
+      mctx.fillStyle = brushColor();
       mctx.beginPath(); mctx.arc(p.x, p.y, brush.size / 2, 0, Math.PI * 2); mctx.fill();
     }
-    function paintStart(e) { painting = true; stage.setPointerCapture(e.pointerId); paintAt(stagePoint(e)); renderMaskView(); }
-    function paintMove(e) { if (!painting) return; paintAt(stagePoint(e)); renderMaskView(); }
+    function paintSegment(a, b) {
+      mctx.strokeStyle = brushColor();
+      mctx.lineWidth = brush.size; mctx.lineCap = "round"; mctx.lineJoin = "round";
+      mctx.beginPath(); mctx.moveTo(a.x, a.y); mctx.lineTo(b.x, b.y); mctx.stroke();
+    }
+    function paintStart(e) { painting = true; try { stage.setPointerCapture(e.pointerId); } catch (_) { /* synthetic pointer */ } lastPaint = stagePoint(e); paintAt(lastPaint); scheduleMaskView(); }
+    function paintMove(e) { if (!painting) return; const p = stagePoint(e); paintSegment(lastPaint, p); lastPaint = p; scheduleMaskView(); }
     async function paintEnd() {
       if (!painting) return;
-      painting = false; maskDirty = true;
+      painting = false; maskDirty = true; lastPaint = null;
       saveMask();
     }
     const saveMask = debounce(async () => {
@@ -446,7 +559,7 @@
       try {
         const p = await uploadImage(pid, file);
         Object.assign(project, p);
-        hint.textContent = "Drag to move, scroll to zoom";
+        hint.textContent = HINT_MOVE;
         requestPreview();
         toast("Photo replaced");
       } catch (err) { toast("Upload failed: " + err.message); }
@@ -468,8 +581,8 @@
       maskMode = !maskMode;
       maskBtn.setAttribute("aria-pressed", String(maskMode));
       maskTools.classList.toggle("hidden", !maskMode);
-      stage.style.cursor = maskMode ? "crosshair" : "grab";
-      hint.textContent = maskMode ? "Paint on the preview" : "Drag to move, scroll to zoom";
+      stage.classList.toggle("painting", maskMode);
+      hint.textContent = maskMode ? "Paint on the preview" : HINT_MOVE;
     });
     blurBtn.addEventListener("click", () => { viewBlur = !viewBlur; blurBtn.setAttribute("aria-pressed", String(viewBlur)); blurStyle(); });
     previewCol.append(el("div", { class: "preview-tools" }, [maskBtn, impBtn, blurBtn, el("span", { class: "spacer" }), replaceBtn]), maskTools);
@@ -515,7 +628,8 @@
       input.addEventListener("dblclick", () => { if (spec.reset !== undefined) { obj[spec.key] = spec.reset; syncField(spec.key); onChange(); } });
       fieldRefs[spec.key] = { input, val, obj, format: spec.format || ((v) => fmt.fixed(v, spec.step < 0.1 ? 2 : 1)) };
       syncField(spec.key);
-      return el("div", { class: "field" }, [el("label", {}, [spec.label, val]), input, spec.help ? el("div", { class: "help" }, spec.help) : null]);
+      input.id = `f-${spec.key}`;
+      return el("div", { class: "field" }, [el("label", { for: input.id }, [spec.label, val]), input, spec.help ? el("div", { class: "help" }, spec.help) : null]);
     }
     function numberField(obj, key, label, opts, onChange) {
       const isLen = !!opts.length;
@@ -540,7 +654,7 @@
     // Photo: crop, zoom, rotate and tone presets.
     const cropBody = el("div", {}, [
       el("div", { class: "chips", style: "margin-bottom:14px" }, Object.keys(PREP_PRESETS).map((name) => el("button", { class: "chip", type: "button", onclick: () => { Object.assign(prep, PREP_PRESETS[name]); Object.keys(PREP_PRESETS[name]).forEach(syncField); changed(); } }, name))),
-      rangeField(prep, { key: "crop_size", label: "Zoom (frame size)", min: 0.05, max: 1.5, step: 0.01, reset: 1, format: (v) => fmt.fixed(v, 2) }, changed),
+      rangeField(prep, { key: "crop_size", label: "Zoom (frame size)", min: 0.05, max: 3, step: 0.01, reset: 1, format: (v) => fmt.fixed(v, 2) }, changed),
       el("div", { class: "row2" }, [
         rangeField(prep, { key: "crop_cx", label: "Centre X", min: 0, max: 1, step: 0.001, reset: 0.5, format: (v) => fmt.fixed(v, 3) }, changed),
         rangeField(prep, { key: "crop_cy", label: "Centre Y", min: 0, max: 1, step: 0.001, reset: 0.5, format: (v) => fmt.fixed(v, 3) }, changed),
@@ -566,7 +680,7 @@
 
     // Background removal and mask strength.
     const bgAvailable = !!(health && health.background_removal);
-    const bgToggle = el("button", { class: "toggle", role: "switch", "aria-checked": String(!!prep.background_removal), disabled: !bgAvailable, onclick: () => { prep.background_removal = !prep.background_removal; bgToggle.setAttribute("aria-checked", String(prep.background_removal)); changed(); } });
+    const bgToggle = el("button", { class: "toggle", role: "switch", "aria-label": "Remove background", "aria-checked": String(!!prep.background_removal), disabled: !bgAvailable, onclick: () => { prep.background_removal = !prep.background_removal; bgToggle.setAttribute("aria-checked", String(prep.background_removal)); changed(); } });
     const faceChip = el("span", { class: "val" }, project.has_image ? "Looking for faces" : "");
     const frameBtn = el("button", { class: "btn small", type: "button", disabled: true }, "Frame the face");
     let faceInfo = null;
@@ -600,7 +714,7 @@
       unitsSeg.append(el("button", { type: "button", "aria-pressed": String(state.units === k), onclick: () => { state.units = k; localStorage.setItem("sas-units", k); route(); } }, label));
     });
     const boardChanged = () => { board.min_skip = clamp(board.min_skip, 1, Math.floor(board.pin_count / 2) - 1); drawOverlay(); blurStyle(); save(); requestPreview(); boardSummary.textContent = boardSummaryText(); };
-    const invertToggle = el("button", { class: "toggle", role: "switch", "aria-checked": String(!!board.invert), onclick: () => { board.invert = !board.invert; invertToggle.setAttribute("aria-checked", String(board.invert)); if (board.invert && board.thread_color === "#161616") { board.thread_color = "#f3f0ea"; board.board_color = "#15161a"; } else if (!board.invert && board.thread_color === "#f3f0ea") { board.thread_color = "#161616"; board.board_color = "#f6f3ee"; } threadColor.value = board.thread_color; boardColor.value = board.board_color; boardChanged(); } });
+    const invertToggle = el("button", { class: "toggle", role: "switch", "aria-label": "Invert", "aria-checked": String(!!board.invert), onclick: () => { board.invert = !board.invert; invertToggle.setAttribute("aria-checked", String(board.invert)); if (board.invert && board.thread_color === "#161616") { board.thread_color = "#f3f0ea"; board.board_color = "#15161a"; } else if (!board.invert && board.thread_color === "#f3f0ea") { board.thread_color = "#161616"; board.board_color = "#f6f3ee"; } threadColor.value = board.thread_color; boardColor.value = board.board_color; boardChanged(); } });
     const threadColor = el("input", { type: "color", value: board.thread_color, onchange: (e) => { board.thread_color = e.target.value; boardChanged(); } });
     const boardColor = el("input", { type: "color", value: board.board_color, onchange: (e) => { board.board_color = e.target.value; boardChanged(); } });
     const boardSummaryText = () => `${fmt.size(board.diameter_mm)} board, ${board.pin_count} pins ${fmt.size(board.pin_inset_mm, 1)} in from the edge, pins ${(board.diameter_mm / board.pin_count * Math.PI / 1).toFixed(1)} mm apart along the rim. Thread ${board.thread_width_mm} mm.`;
@@ -609,7 +723,8 @@
     board.palette = Array.isArray(board.palette) ? board.palette : [];
     board.palette_auto = Number(board.palette_auto || 0);
     const PALETTE_PRESETS = { cmyk: ["#00aeef", "#ec008c", "#fff200", "#161616"], warm: ["#f6c9a8", "#c9733a", "#6b4423", "#161616"], earth: ["#e6d3b3", "#c9a27e", "#6b4423", "#1b2a5c", "#161616"], primary: ["#f2d21c", "#d9261c", "#2457c5", "#161616"] };
-    const paletteMode = () => board.palette_auto >= 2 ? `auto${board.palette_auto}` : (board.palette.length >= 2 ? (Object.keys(PALETTE_PRESETS).find((k) => PALETTE_PRESETS[k].join() === board.palette.join()) || "custom") : "single");
+    let paletteChoice = board.palette_auto >= 2 ? `auto${board.palette_auto}` : (board.palette.length >= 2 ? (Object.keys(PALETTE_PRESETS).find((k) => PALETTE_PRESETS[k].join() === board.palette.join()) || "custom") : "single");
+    const paletteMode = () => paletteChoice;
     const paletteChips = el("div", { class: "chips" });
     const swatches = el("div", { class: "swatches" });
     const customBox = el("div", { class: "palette-custom hidden" });
@@ -630,7 +745,7 @@
       board.palette.forEach((c, i) => {
         customBox.append(el("span", { class: "swatch" }, [
           el("input", { type: "color", value: c, onchange: (e) => { board.palette[i] = e.target.value; paletteChanged(); } }),
-          el("button", { class: "btn small quiet", type: "button", title: "Remove", onclick: () => { board.palette.splice(i, 1); paletteChanged(); renderCustom(); } }, "×"),
+          el("button", { class: "btn small quiet", type: "button", title: "Remove", "aria-label": "Remove colour", disabled: board.palette.length <= 2, onclick: () => { board.palette.splice(i, 1); paletteChanged(); renderCustom(); } }, "×"),
         ]));
       });
       if (board.palette.length < 6) customBox.append(el("button", { class: "btn small", type: "button", onclick: () => { board.palette.push("#2457c5"); paletteChanged(); renderCustom(); } }, "Add colour"));
@@ -643,15 +758,16 @@
     }
     [["single", "Single thread"], ["cmyk", "CMYK"], ["warm", "Warm skin"], ["earth", "Earth"], ["primary", "Primary"], ["auto4", "Auto, 4 colours"], ["auto6", "Auto, 6 colours"], ["custom", "Custom"]].forEach(([mode, label]) => {
       paletteChips.append(el("button", { class: "chip", type: "button", dataset: { mode }, "aria-pressed": String(paletteMode() === mode), onclick: () => {
+        paletteChoice = mode;
         if (mode === "single") { board.palette = []; board.palette_auto = 0; }
         else if (mode.startsWith("auto")) { board.palette_auto = Number(mode.slice(4)); }
-        else if (mode === "custom") { board.palette_auto = 0; if (board.palette.length < 2) board.palette = ["#d9261c", "#2457c5", "#161616"]; }
+        else if (mode === "custom") { board.palette_auto = 0; board.palette = board.palette.length >= 2 ? board.palette.slice() : ["#d9261c", "#2457c5", "#161616"]; }
         else { board.palette = PALETTE_PRESETS[mode].slice(); board.palette_auto = 0; }
         paletteChanged();
         renderCustom();
       } }, label));
     });
-    const paletteField = el("div", { class: "field" }, [el("label", {}, ["Colours", el("span", { class: "val" }, "v3")]), paletteChips, customBox, swatches,
+    const paletteField = el("div", { class: "field" }, [el("label", {}, "Colours"), paletteChips, customBox, swatches,
       el("div", { class: "help" }, "Several threads, each one continuous, laid lightest first and black last. The picture is matched in colour (CIELAB) from the viewing distance. Colour plans use engine A and want more lines: raise Maximum lines to about 6,000.")]);
     renderCustom();
     refreshPalette();
@@ -846,6 +962,7 @@
     } }, "Viewing distance");
     const withSelect = el("select", { "aria-label": "Compare with another plan", style: "width:auto" }, [el("option", { value: "" }, "Compare with another plan"), ...allRuns.filter((r) => r.status === "done" && !shown.some((s) => s.id === r.id)).map((r) => el("option", { value: r.id }, `${r.label || "Engine " + r.engine.toUpperCase()} · ${fmt.when(r.created_at)} · ${fmt.int((r.metrics || {}).line_count)} lines`))]);
     withSelect.addEventListener("change", () => { if (withSelect.value) location.hash = `#/r/${runId}?with=${withSelect.value}`; });
+    if (withSelect.options.length < 2) withSelect.classList.add("hidden");
     const renameBtn = el("button", { class: "btn quiet", onclick: async () => {
       const label = prompt("Name this plan", run.label || "");
       if (label === null) return;
@@ -867,8 +984,8 @@
         ["Error (weighted RMS, lower is better)", (m) => fmt.fixed(m.error, 4), (a, b) => a < b],
         ["Lines", (m) => fmt.int(m.line_count), null],
         ["Thread", (m) => fmt.len(m.thread_length_mm), null],
-        ["Lines per colour", (m) => m.layers && m.layers.length > 1 ? m.layers.map((l) => `${l.name} ${fmt.int(l.lines)}`).join(", ") : "–", null],
-        ["Thread per colour", (m) => m.layers && m.layers.length > 1 ? m.layers.map((l) => `${l.name} ${fmt.len(l.thread_length_mm)}`).join(", ") : "–", null],
+        ["Lines per colour", (m) => m.layers && m.layers.length > 1 ? m.layers.filter((l) => l.lines > 0).map((l) => `${l.name} ${fmt.int(l.lines)}`).join(", ") : "–", null],
+        ["Thread per colour", (m) => m.layers && m.layers.length > 1 ? m.layers.filter((l) => l.lines > 0).map((l) => `${l.name} ${fmt.len(l.thread_length_mm)}`).join(", ") : "–", null],
         ["Thread to buy (20% margin)", (m) => fmt.len(m.thread_with_margin_mm), null],
         ["Spools of 1,000 yd", (m) => fmt.int(m.spools_1000yd), null],
         ["Generation time", (m) => fmt.secs(m.elapsed_s), (a, b) => a < b],
@@ -978,7 +1095,9 @@
     const n = data.pin_count;
     const labels = data.labels;
     const phrases = data.phrases || [];
-    const layers = data.layers && data.layers.length ? data.layers : [{ name: "thread", color: "#161616", start: 0, lines: seq.length - 1 }];
+    const layers = data.layers && data.layers.filter((l) => l.lines > 0).length ? data.layers.filter((l) => l.lines > 0) : [{ name: "thread", color: "#161616", start: 0, lines: seq.length - 1 }];
+    const totalLines = layers.reduce((a, l) => a + l.lines, 0);
+    const changesBefore = (s) => layers.filter((l, i) => i > 0 && l.start <= s).length;
     const changePhrases = data.change_phrases || [];
     const layerAt = (index) => { let k = 0; for (let i = 0; i < layers.length; i++) if (layers[i].start <= index) k = i; return k; };
     const isChangeStep = (s) => layers.some((l, i) => i > 0 && l.start === s + 1);
@@ -1164,7 +1283,7 @@
         el("div", { class: "sector" }, labels[to]),
         el("div", { class: "dir" }, direction(from, to)),
         after !== null ? el("div", { class: "next" }, ["then ", el("b", { class: "num" }, String(after)), ` (${labels[after]})`]) : el("div", { class: "next" }, "last line"),
-        el("div", { class: "thread" }, `${fmt.int(total - step)} lines left`),
+        el("div", { class: "thread" }, `${fmt.int(totalLines - (step - changesBefore(step)))} lines left`),
       );
       backBtn.disabled = step === 0;
       if (announce) speak(phrase(to));
@@ -1234,10 +1353,12 @@
         savePrefs();
         return;
       }
-      if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
       const code = e.code || e.key;
       if (keys.next.includes(code)) { e.preventDefault(); advance(1); return; }
       if (keys.back.includes(code)) { e.preventDefault(); advance(-1); return; }
+      // A focused control keeps Enter and Space for itself; the big tap area is the exception.
+      const tag = (e.target && e.target.tagName) || "";
+      if (["INPUT", "SELECT", "TEXTAREA"].includes(tag) || (["BUTTON", "A"].includes(tag) && e.target !== main)) return;
       if ([" ", "Enter", "ArrowRight", "ArrowDown", "PageDown", "MediaTrackNext"].includes(e.key)) { e.preventDefault(); advance(1); }
       else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace", "MediaTrackPrevious"].includes(e.key)) { e.preventDefault(); advance(-1); }
     };
@@ -1277,7 +1398,9 @@
     $("#scrim").classList.toggle("hidden", !open);
     $("#menuButton").setAttribute("aria-expanded", String(open));
   });
-  $("#scrim").addEventListener("click", () => { $("#sidebar").classList.remove("open"); $("#scrim").classList.add("hidden"); });
+  const closeMenu = () => { $("#sidebar").classList.remove("open"); $("#scrim").classList.add("hidden"); $("#menuButton").setAttribute("aria-expanded", "false"); };
+  $("#scrim").addEventListener("click", closeMenu);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#sidebar").classList.contains("open")) closeMenu(); });
   api.get("api/health").then((h) => { state.health = h; $("#health").textContent = `Server up, ${h.workers} worker${h.workers === 1 ? "" : "s"}`; }).catch(() => { $("#health").textContent = "Server unreachable"; });
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(() => { /* http on a LAN address has no SW; fine */ });

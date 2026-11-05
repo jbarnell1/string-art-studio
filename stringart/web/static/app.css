@@ -189,9 +189,11 @@ table.data tr.clickable:hover td { background: var(--raised); }
 /* Studio ----------------------------------------------------------------------------------- */
 .studio { display: grid; grid-template-columns: minmax(300px, 460px) minmax(0, 1fr); gap: var(--gap); align-items: start; }
 .studio .preview-col { position: sticky; top: 0; }
-.preview-stage { position: relative; background: var(--well); border-radius: var(--radius-sheet); overflow: hidden; aspect-ratio: 1; touch-action: none; user-select: none; }
+.preview-stage { position: relative; background: var(--well); border-radius: var(--radius-sheet); overflow: hidden; aspect-ratio: 1; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+.preview-stage.dragging { cursor: grabbing; }
+.preview-stage.painting { cursor: crosshair; }
 .preview-stage img, .preview-stage canvas, .preview-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.preview-stage img { object-fit: fill; }
+.preview-stage img { object-fit: fill; pointer-events: none; -webkit-user-drag: none; -webkit-touch-callout: none; transform-origin: 0 0; will-change: transform; }
 .preview-stage canvas.mask { opacity: .55; pointer-events: none; }
 .preview-stage img.weights { pointer-events: none; }
 .preview-stage svg { pointer-events: none; }
@@ -267,7 +269,8 @@ body.build-mode .sheet { margin: 0; border: 0; border-radius: 0; padding: 0; hei
 .build-progress i { display: block; height: 100%; background: var(--accent); }
 .build-done { padding: 40px 24px; text-align: center; }
 .build-bar .status { font-size: var(--fs-small); color: var(--muted); }
-.build-bar .btn[aria-pressed="true"] { background: var(--active); border-color: var(--control); }
+.btn[aria-pressed="true"] { background: var(--active); border-color: var(--control); box-shadow: inset 0 0 0 1px var(--control); }
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Phone ------------------------------------------------------------------------------------ */
 /* Mid widths (a laptop with the sidebar open): the lead text sits above its panel so the sliders
@@ -291,6 +294,16 @@ body.build-mode .sheet { margin: 0; border: 0; border-radius: 0; padding: 0; hei
   .topbar-title input { min-width: 0; width: 100%; }
   table.data .hide-phone { display: none; }
 }
+/* Touch: bigger targets, and 16px inputs so iOS does not zoom the page on focus. */
+@media (pointer: coarse) {
+  .chip, .btn.small, .seg button, .build-bar select { min-height: 40px; }
+  .toggle { width: 44px; height: 26px; border-radius: 13px; }
+  .toggle::after { width: 20px; height: 20px; border-radius: 10px; }
+  .toggle[aria-checked="true"]::after { transform: translateX(18px); }
+  input, select, textarea { font-size: 16px; }
+  .swatch input[type="color"] { width: 44px; height: 36px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }

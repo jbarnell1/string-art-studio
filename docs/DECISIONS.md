@@ -4,6 +4,23 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-019 - Pins are spaced a little unevenly, so chords do not stack into rings
+**2026-11-05.** The owner saw a bullseye of concentric circles in dark areas of an 8,000-line plan,
+from both engines. It is geometry, not rendering: a chord that skips d pins on a ring of radius R
+passes R cos(pi d / N) from the centre, so with evenly spaced pins every chord of the same skip
+touches the same circle and the chords stack into envelopes 3.86 mm apart on a 610 mm, 240-pin
+board. The owner's plan showed peaks in its radial density at exactly those radii, and a real piece
+would show them too. The engine cannot avoid it, because the distances themselves are quantised.
+The fix is in the board: each pin moves along the rim by a fixed pseudo-random fraction of the pin
+pitch (`pin_jitter`, default 0.3, capped so neighbours keep the pin diameter plus 1.6 mm, about
+3.2 mm at 240 pins), which spreads each skip's chords over most of the gap to the next. The offsets
+come from a fixed integer hash of the pin index and `jitter_seed`, not from numpy's generator, so
+a template can be regenerated identically by any later version; the editor's overlay uses the same
+hash in JavaScript. Boards stored before this setting have no key and keep even pins, so old
+templates and plans are unchanged. Measured on the owner's plan, regenerated with the same
+settings: ring score (radial comb 15 to 115 mm) 0.0258 to 0.0134, peak 0.079 to 0.035, error 0.1036
+to 0.1031, the same 8,000 lines and 3.7 km of thread.
+
 ### ADR-018 - The two inner loops are Numba kernels, with numpy fallbacks
 **2026-11-05.** The owner asked whether the GPU could speed the engine up. Both machines have
 NVIDIA cards (the media PC a GTX 1060, the desktop an RTX 4070 SUPER) and CUDA reaches WSL2, but

@@ -51,6 +51,13 @@ candidate is two gathers along its pixels. The light-protection factor scales th
 `R` (ADR-006; 1.0, strict, is the default since ADR-014). Reported error is the symmetric weighted
 RMS of lightness in [0, 1]. The v1 objective (`objective: "coverage"`) is kept for comparison.
 
+## Pin positions
+
+`BoardConfig.pin_angles` is the only source of pin positions; the engines, the renderer, the
+template PDF and the fab files all derive from it. Pins sit at `(i + offset_i) * 2 pi / N` with
+`offset_i` a fixed hash of the index in `[-pin_jitter, pin_jitter]` (ADR-019). Plans stored before
+the setting existed have no `pin_jitter` key and keep even spacing.
+
 ## Colour
 
 With a palette (`BoardConfig.palette` or `palette_auto`, ADR-017) `engine/color.py` takes over:

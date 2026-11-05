@@ -33,10 +33,18 @@ class BoardConfig:
     # palette_auto >= 2 picks that many colours from the photo (always including the darkest).
     palette: list = field(default_factory=list)
     palette_auto: int = 0
+    # Uneven pin spacing (ADR-019): each pin moves along the rim by up to this fraction of the pin
+    # pitch, from a fixed hash of its index and jitter_seed. Evenly spaced pins put every chord of
+    # a given skip at the same distance from the centre, and those chords stack into visible rings.
+    # Plans stored before this setting existed have no key and keep even spacing (see from_dict).
+    pin_jitter: float = 0.3
+    jitter_seed: int = 1
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "BoardConfig":
         data = dict(data or {})
+        # A stored board without the key predates uneven spacing; its template has even pins.
+        data.setdefault("pin_jitter", 0.0)
         known = {k: data[k] for k in cls.__dataclass_fields__ if k in data}
         cfg = cls(**known)
         cfg.validate()
@@ -59,6 +67,8 @@ class BoardConfig:
         self.blur_mm_per_m = float(min(max(self.blur_mm_per_m, 0.2), 6.0))
         self.sector_count = int(min(max(self.sector_count, 1), 26))
         self.work_res = int(min(max(self.work_res, 300), 2400))
+        self.pin_jitter = float(min(max(float(self.pin_jitter or 0.0), 0.0), self.max_pin_jitter))
+        self.jitter_seed = int(self.jitter_seed or 0) & 0x7FFFFFFF
         self.thread_color = normalize_hex(self.thread_color, "#161616")
         self.board_color = normalize_hex(self.board_color, "#f6f3ee")
         clean = []
@@ -85,9 +95,27 @@ class BoardConfig:
     def pin_radius_mm(self) -> float:
         return self.radius_mm - self.pin_inset_mm
 
+    @property
+    def pin_pitch_mm(self) -> float:
+        return 2.0 * math.pi * self.pin_radius_mm / self.pin_count
+
+    @property
+    def max_pin_jitter(self) -> float:
+        """Largest jitter that keeps neighbouring pins at least pin diameter + 1.6 mm apart."""
+        clearance = self.pin_diameter_mm + 1.6
+        return float(min(0.45, max(0.0, (1.0 - clearance / max(self.pin_pitch_mm, 1e-6)) / 2.0)))
+
+    def pin_offsets(self) -> np.ndarray:
+        """Per-pin offset in units of the pin pitch, uniform in [-pin_jitter, pin_jitter]."""
+        if self.pin_jitter <= 0:
+            return np.zeros(self.pin_count)
+        u = np.array([_hash01(i, self.jitter_seed) for i in range(self.pin_count)])
+        return (2.0 * u - 1.0) * self.pin_jitter
+
     def pin_angles(self) -> np.ndarray:
-        """Angle of each pin in radians, pin 0 at twelve o'clock, increasing clockwise."""
-        return np.arange(self.pin_count) * (2.0 * math.pi / self.pin_count)
+        """Angle of each pin in radians, pin 0 near twelve o'clock, increasing clockwise."""
+        step = 2.0 * math.pi / self.pin_count
+        return (np.arange(self.pin_count) + self.pin_offsets()) * step
 
     def pin_positions_mm(self) -> np.ndarray:
         """(n, 2) array of x, y in mm with the board centre at the origin and y pointing down."""
@@ -162,6 +190,18 @@ def thread_estimate(board: BoardConfig, sequence: list[int], spool_yards: float 
     spool_mm = spool_yards * 914.4
     spools = int(math.ceil(with_margin / spool_mm)) if with_margin > 0 else 0
     return ThreadEstimate(length, with_margin, spools, spool_mm, margin)
+
+
+def _hash01(i: int, seed: int) -> float:
+    """A fixed, platform-independent hash of (i, seed) to [0, 1): pin positions must never change
+    between versions, or old templates stop matching their plans."""
+    x = (i * 0x9E3779B1 + seed * 0x85EBCA77 + 0x165667B1) & 0xFFFFFFFF
+    x ^= x >> 16
+    x = (x * 0x7FEB352D) & 0xFFFFFFFF
+    x ^= x >> 15
+    x = (x * 0x846CA68B) & 0xFFFFFFFF
+    x ^= x >> 16
+    return x / 4294967296.0
 
 
 def normalize_hex(value: str, default: str) -> str:

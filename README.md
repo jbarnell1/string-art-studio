@@ -17,7 +17,8 @@ template and laser or CNC files, then string the piece from your phone with huge
   features stay crisp, and a "Show importance" overlay shows what the optimiser will care about.
 - Board configuration in millimetres or inches: diameter, pin count, inset, pin and thread size,
   thread and board colour, inverted (light thread on a dark board), minimum pin skip, maximum lines,
-  viewing distance, sector labels. Save any configuration as a preset.
+  viewing distance, sector labels, and slightly uneven pin spacing (on by default), which stops the
+  threads stacking into concentric rings. Save any configuration as a preset.
 - Two engines that optimise the same thing: make a thread-accurate simulation look like the target
   from a normal viewing distance. The simulation adds light linearly and compares lightness the way
   the eye does, so mid-tones get the thread they really need and the on-screen render looks like the

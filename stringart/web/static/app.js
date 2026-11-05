@@ -32,6 +32,16 @@
     return run;
   };
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  // Same fixed hash as stringart.board._hash01, so the overlay shows the pins where the template puts them.
+  const hash01 = (i, seed) => {
+    let x = (Math.imul(i, 0x9E3779B1) + Math.imul(seed, 0x85EBCA77) + 0x165667B1) >>> 0;
+    x = (x ^ (x >>> 16)) >>> 0;
+    x = Math.imul(x, 0x7FEB352D) >>> 0;
+    x = (x ^ (x >>> 15)) >>> 0;
+    x = Math.imul(x, 0x846CA68B) >>> 0;
+    x = (x ^ (x >>> 16)) >>> 0;
+    return x / 4294967296;
+  };
   const MM_PER_IN = 25.4;
   const fmt = {
     int: (n) => (n === null || n === undefined || Number.isNaN(n)) ? "–" : Math.round(n).toLocaleString(),
@@ -320,7 +330,8 @@
       const n = board.pin_count;
       let pins = "";
       for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
+        const off = board.pin_jitter > 0 ? (2 * hash01(i, board.jitter_seed || 0) - 1) * board.pin_jitter : 0;
+        const a = ((i + off) / n) * Math.PI * 2;
         pins += `<circle cx="${(500 + r * Math.sin(a)).toFixed(1)}" cy="${(500 - r * Math.cos(a)).toFixed(1)}" r="2.2" />`;
       }
       let sectors = "";
@@ -790,6 +801,7 @@
       el("div", { class: "switch" }, [el("div", {}, [el("div", { class: "label" }, "Invert"), el("div", { class: "sub" }, "Light thread on a dark board. The thread then builds the light areas.")]), invertToggle]),
       el("div", { class: "row2" }, [
         numberField(board, "min_skip", "Minimum pin skip", { min: 1, max: 199, step: 1, help: "Chords between pins closer than this are never used; they hug the rim and add little." }, boardChanged),
+        rangeField(board, { key: "pin_jitter", label: "Uneven pin spacing", min: 0, max: 0.32, step: 0.01, reset: 0.3, format: (v) => fmt.fixed(v, 2), help: "Moves each pin a little along the rim, by up to this share of the pin spacing. With perfectly even pins every chord of the same skip sits at the same distance from the centre and the threads stack into rings; 0.3 breaks that up. The template prints the real positions." }, boardChanged),
         numberField(board, "max_lines", "Maximum lines", { min: 10, max: 20000, step: 100, help: "A ceiling, not a target: the engines stop on their own when no line still helps. If a plan reports that it used every line, raise this; more lines keep improving colour plans and detailed single-thread ones at the cost of thread." }, boardChanged),
         numberField(board, "viewing_distance_m", "Viewing distance", { min: 0.3, max: 10, step: 0.1, unit: "metres", help: "Sets the blur both engines compare through." }, boardChanged),
         numberField(board, "sector_count", "Sectors", { min: 1, max: 26, step: 1, help: "Pins are grouped A, B, C... so they are quicker to find while building." }, boardChanged),

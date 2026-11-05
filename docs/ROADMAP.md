@@ -72,6 +72,11 @@ four times faster, single-thread plans faster too; numpy fallbacks keep the engi
 without Numba. A CUDA port of the colour engine remains possible (both homelab machines have
 NVIDIA cards) but was judged not worth its image and driver footprint yet.
 
+## v3 part four, rings (built 2026-11-05)
+
+Uneven pin spacing (ADR-019) removes the concentric rings that evenly spaced pins produce in dense
+areas; it is on by default for new plans and older plans keep their even pins.
+
 ## Later
 
 - Square and rectangular frames; printable thread-width test pattern; minimum-weight matching in

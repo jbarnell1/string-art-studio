@@ -116,6 +116,12 @@ In build mode the current colour sits in the top bar and the player stops at eac
 change thread, tie on at the pin shown, press Next. Buy one spool per colour; the metrics table
 gives the thread per colour.
 
+## Rings in dense areas
+
+Plans made before v0.3.3 use evenly spaced pins and can show concentric rings in dark areas. Open
+the project, check that "Uneven pin spacing" in the Board panel reads 0.30, and generate again; the
+new template prints the uneven positions. Never mix a template and a plan from different runs.
+
 ## Calibration after the pilot build
 
 1. Measure the thread: wrap ten turns around a ruler, divide by ten, enter it as thread width.

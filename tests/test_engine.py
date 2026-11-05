@@ -98,3 +98,38 @@ def test_polish_only_applies_verified_improvements():
     for a, b in zip(seq[:-1], seq[1:]):
         rebuilt.add_line(a, b)
     assert np.allclose(rebuilt.C, state.C, atol=1e-4)
+
+
+def test_pin_jitter_is_fixed_bounded_and_legacy_safe():
+    """Uneven pin spacing (ADR-019): positions never change between runs or versions, keep the
+    hammering clearance, and boards stored before the setting existed keep even pins."""
+    import math
+    legacy = BoardConfig.from_dict({"pin_count": 240, "diameter_mm": 610})
+    assert legacy.pin_jitter == 0.0
+    even = legacy.pin_angles()
+    assert np.allclose(np.diff(even), 2 * math.pi / 240)
+    b = BoardConfig.from_dict(BoardConfig().to_dict())
+    assert b.pin_jitter == 0.3
+    a1, a2 = b.pin_angles(), BoardConfig.from_dict(b.to_dict()).pin_angles()
+    assert np.array_equal(a1, a2)
+    gaps = np.diff(np.r_[a1, a1[0] + 2 * math.pi]) * b.pin_radius_mm
+    assert gaps.min() >= b.pin_diameter_mm + 1.6 - 1e-6
+    # Fixed values guard against an accidental change of the hash, which would move old templates.
+    assert [round(float(x), 6) for x in b.pin_offsets()[:3]] == [0.064479, -0.149805, -0.278691]
+    # A request above the clearance cap is clamped.
+    assert BoardConfig.from_dict({"pin_jitter": 0.9}).pin_jitter == BoardConfig().max_pin_jitter
+
+
+def test_uneven_pins_break_up_chord_rings():
+    """With even pins all chords of one skip share one distance from the centre; with jitter
+    they spread over the gap between neighbouring skips."""
+    import math
+    even = BoardConfig.from_dict({"pin_jitter": 0.0})
+    uneven = BoardConfig.from_dict({"pin_jitter": 0.3})
+    def chord_distances(board, skip):
+        a = board.pin_angles()
+        n = board.pin_count
+        return np.array([board.pin_radius_mm * abs(math.cos((a[(i + skip) % n] - a[i]) / 2)) for i in range(n)])
+    assert np.ptp(chord_distances(even, 110)) < 1e-9
+    step = even.pin_radius_mm * math.pi / even.pin_count
+    assert np.ptp(chord_distances(uneven, 110)) > 0.8 * step

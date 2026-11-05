@@ -56,13 +56,15 @@ Install or update, from jon-desktop:
 ssh homelab@100.101.123.33 'wsl -d homelab -- bash -lc "cd /mnt/c/homelab/string-art-studio && git pull && bash deploy/media-pc/install.sh"'
 ```
 
-Owner steps, once:
-1. Tailscale serve (elevated shell on the media PC): `deploy/media-pc/tailscale-serve.ps1`. Result:
-   `https://desktop-4l95il9.taildc59f0.ts.net/stringart/`.
-2. Gatus: paste `deploy/homelab/gatus-endpoint.yaml` into `/mnt/c/homelab/monitoring/gatus.yaml`
-   and restart the monitoring stack.
-3. The Homepage tile on jon-desktop is in `C:\pwa-autostart\homepage\config\services.yaml` (Creator
-   tools) with the icon in `images/icons/string-art-studio.png`.
+Tailscale serve was set on 2026-11-05 (`deploy/media-pc/tailscale-serve.ps1` holds the command; it
+ran fine over SSH as `homelab`, no elevation needed on that box). Result:
+`https://desktop-4l95il9.taildc59f0.ts.net/stringart/`.
+
+Owner step, once: Gatus. Paste `deploy/homelab/gatus-endpoint.yaml` into
+`/mnt/c/homelab/monitoring/gatus.yaml` and restart the monitoring stack.
+
+The Homepage tile on jon-desktop is in `C:\pwa-autostart\homepage\config\services.yaml` (Creator
+tools) with the icon in `images/icons/string-art-studio.png` (added 2026-11-05).
 
 Logs: `docker compose logs -f` in the checkout. Health: `curl http://127.0.0.1:8050/healthz`.
 

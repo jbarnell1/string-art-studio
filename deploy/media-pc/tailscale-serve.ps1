@@ -1,5 +1,6 @@
 # Owner step on the media PC (desktop-4l95il9): publish String Art Studio on the tailnet.
-# tailscale serve needs an elevated shell. Run once from an admin PowerShell (or over SSH as an admin):
+# On this box the command ran over SSH as the homelab user without elevation (2026-11-05). If it
+# refuses, run it from an admin PowerShell:
 #
 #   powershell -ExecutionPolicy Bypass -File C:\homelab\string-art-studio\deploy\media-pc\tailscale-serve.ps1
 #

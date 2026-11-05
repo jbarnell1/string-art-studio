@@ -652,7 +652,7 @@
       } }, label));
     });
     const paletteField = el("div", { class: "field" }, [el("label", {}, ["Colours", el("span", { class: "val" }, "v3")]), paletteChips, customBox, swatches,
-      el("div", { class: "help" }, "Several threads, each one continuous, laid lightest first and black last. The picture is matched in colour (CIELAB) from the viewing distance. Colour plans use engine A.")]);
+      el("div", { class: "help" }, "Several threads, each one continuous, laid lightest first and black last. The picture is matched in colour (CIELAB) from the viewing distance. Colour plans use engine A and want more lines: raise Maximum lines to about 6,000.")]);
     renderCustom();
     refreshPalette();
     const boardSummary = el("div", {}, boardSummaryText());

@@ -417,7 +417,9 @@ def run_color_greedy(state: ColorState, params: EngineParams, progress: Progress
                     if len(seqs[k]) < 3 or search.expired():
                         continue
                     share = max(1.0, (search.budget - search.elapsed()) / max(1, K - k))
-                    totals = polish(state.views[k], seqs[k], share, eps, None)
+                    # This layer may grow by whatever the shared line budget still allows.
+                    layer_cap = len(seqs[k]) - 1 + max(0, board.max_lines - total_lines())
+                    totals = polish(state.views[k], seqs[k], share, eps, None, max_lines=layer_cap)
                     rounds += totals["rounds"]
                     applied += totals["replace"] + totals["insert"] + totals["delete"] + totals["unfold"]
                 emit("polish")

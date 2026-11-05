@@ -109,6 +109,9 @@ can also travel as a bundle ZIP from the results page.
 Pick a palette in the Board panel (or Auto to take colours from the photo); the preview turns to
 colour and the swatches show the build order, lightest first. Colour plans run on engine A and take
 about twice as long as a single thread (about one minute for 4,000 lines on a desktop, two on the media PC).
+Colour plans are line-hungry (each colour needs its own coverage): on the colour sample the error
+was 0.254 at 4,000 lines and 0.197 at 6,000, so raise Maximum lines to about 6,000 for colour and budget
+the thread accordingly. More search time changes nothing; both engines converge inside the default budget.
 In build mode the current colour sits in the top bar and the player stops at each change: tie off,
 change thread, tie on at the pin shown, press Next. Buy one spool per colour; the metrics table
 gives the thread per colour.

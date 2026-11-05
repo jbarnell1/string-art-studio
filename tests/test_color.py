@@ -56,6 +56,8 @@ def test_colour_run_uses_the_right_thread_for_each_disc():
     seqs, result = run_color_greedy(state, EngineParams(refine_seconds=2, time_budget_s=60))
     assert len(seqs) == 2 and result.error < result.error_initial
     assert all(len(s) >= 2 for s in seqs)
+    # The line budget is shared by all colours, through the local search's inserts as well.
+    assert sum(len(s) - 1 for s in seqs) <= board.max_lines
     res = 200
     yy, xx = np.mgrid[0:res, 0:res].astype(np.float32) / res
     red = ((xx - 0.5) ** 2 + (yy - 0.32) ** 2) < 0.012

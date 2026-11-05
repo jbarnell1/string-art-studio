@@ -47,9 +47,12 @@ def gain_matrix(state: RenderState, ok: np.ndarray) -> np.ndarray:
 
 
 def polish_round(state: RenderState, seq: list[int], ok: np.ndarray, eps: float, clock: Clock,
-                 max_moves: int) -> dict[str, int]:
-    """One round: price every move, verify the best non-overlapping ones exactly. Mutates seq."""
+                 max_moves: int, max_lines: int | None = None) -> dict[str, int]:
+    """One round: price every move, verify the best non-overlapping ones exactly. Mutates seq.
+    `max_lines` caps this sequence's length for inserts (the board's cap by default; a colour
+    layer gets its share of the shared budget)."""
     board = state.board
+    cap = board.max_lines if max_lines is None else int(max_lines)
     stats = {"replace": 0, "insert": 0, "delete": 0, "unfold": 0, "tried": 0}
     L = len(seq)
     if L < 3:
@@ -69,7 +72,7 @@ def polish_round(state: RenderState, seq: list[int], ok: np.ndarray, eps: float,
         cands.append((float(best[i]), 0, int(i) + 1))
 
     # Insert a pin between positions k and k+1 (only while the line budget allows it).
-    if L - 1 < board.max_lines:
+    if L - 1 < cap:
         a, b = P[:-1], P[1:]
         S = G[a] + G[b] + R[:, None]
         S[~(ok[a] & ok[b])] = -np.inf
@@ -115,7 +118,7 @@ def polish_round(state: RenderState, seq: list[int], ok: np.ndarray, eps: float,
             if _verify_replace(state, seq, pos, ok, eps):
                 stats["replace"] += 1
         elif kind == 1:
-            if len(seq) - 1 < board.max_lines and _verify_insert(state, seq, pos, ok, eps):
+            if len(seq) - 1 < cap and _verify_insert(state, seq, pos, ok, eps):
                 stats["insert"] += 1
         elif kind == 2:
             if _verify_delete(state, seq, pos, eps):
@@ -206,7 +209,7 @@ def _verify_unfold(state: RenderState, seq: list[int], i: int, eps: float) -> bo
 
 
 def polish(state: RenderState, seq: list[int], budget_s: float, eps: float,
-           progress: ProgressFn | None = None, max_rounds: int = 40) -> dict[str, int]:
+           progress: ProgressFn | None = None, max_rounds: int = 40, max_lines: int | None = None) -> dict[str, int]:
     """Rounds of polish_round until nothing improves or the budget runs out. Returns totals."""
     clock = Clock(budget_s)
     ok = chord_ok(state.board)
@@ -214,7 +217,7 @@ def polish(state: RenderState, seq: list[int], budget_s: float, eps: float,
     for _ in range(max_rounds):
         if clock.expired() or len(seq) < 3:
             break
-        stats = polish_round(state, seq, ok, eps, clock, max_moves=120 + len(seq) // 8)
+        stats = polish_round(state, seq, ok, eps, clock, max_moves=120 + len(seq) // 8, max_lines=max_lines)
         totals["rounds"] += 1
         for key in ("replace", "insert", "delete", "unfold", "tried"):
             totals[key] += stats[key]

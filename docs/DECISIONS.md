@@ -20,8 +20,8 @@ colours share the line budget, the local search runs per layer, and engine B
 is not offered for colour (its set-then-repair would need one repair per colour). Palettes are a
 preset set (CMYK, warm skin, earth, primary), a custom list of up to six, or k-means over the
 framed photo's Lab pixels with the darkest centre forced to black and any centre near the board
-colour dropped. A colour plan costs about three times a single-thread plan per line (K gradients
-and K fans per step); the default 240 s budget still covers 4,000 lines at 800 px. Build mode shows
+colour dropped. A colour plan costs several times a single-thread plan (K gradients and K fans per step; about
+210 s for 4,000 lines at 800 px against 37 s), so a colour run gets three times the configured time budget. Build mode shows
 the colour and stops at each change ("tie off at pin 12, change to red thread, start at pin 40"),
 exports carry a layer and colour per step, and the run stores `layers.json` beside the flat
 sequence so older readers keep working.

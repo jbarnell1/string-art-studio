@@ -31,7 +31,7 @@ build-backend = "setuptools.build_meta"
 include = ["stringart*"]
 
 [tool.setuptools.package-data]
-stringart = ["web/static/**/*"]
+stringart = ["web/static/**/*", "models/*"]
 
 [tool.ruff]
 line-length = 120

@@ -11,3 +11,5 @@ data/
 docs/brand/candidates/
 .env
 .env.*
+build/
+*.egg-info/

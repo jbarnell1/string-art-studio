@@ -48,6 +48,8 @@ class PrepSettings:
     edge_radius: float = 2.0       # px at 1000 px
     background_removal: bool = False
     mask_strength: float = 1.0     # how strongly the painted importance mask counts
+    face_emphasis: float = 1.0     # 0 .. 2: raise the weight of detected faces and their features
+    structure_weight: float = 0.5  # 0 .. 2: raise the weight along edges of the target
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "PrepSettings":
@@ -75,6 +77,8 @@ class PrepSettings:
         self.edge_strength = float(min(max(self.edge_strength, 0.0), 2.0))
         self.edge_radius = float(min(max(self.edge_radius, 0.5), 10.0))
         self.mask_strength = float(min(max(self.mask_strength, 0.0), 3.0))
+        self.face_emphasis = float(min(max(self.face_emphasis, 0.0), 2.0))
+        self.structure_weight = float(min(max(self.structure_weight, 0.0), 2.0))
 
 
 def load_source(data: bytes) -> np.ndarray:
@@ -103,23 +107,28 @@ def encode_source_jpeg(rgb: np.ndarray, max_side: int = 1600, quality: int = 90)
     return buf.tobytes()
 
 
-def frame_source(rgb: np.ndarray, prep: PrepSettings, res: int) -> np.ndarray:
-    """Crop, zoom and rotate the source onto a res x res square (RGB float32 in [0, 1]).
-    Areas outside the source are white."""
-    h, w = rgb.shape[:2]
+def frame_matrix(prep: PrepSettings, w: int, h: int, res: int) -> np.ndarray:
+    """2x3 affine from source pixels to frame pixels: rotate about the crop centre, then scale."""
     short = min(w, h)
     side = prep.crop_size * short
     cx, cy = prep.crop_cx * w, prep.crop_cy * h
     scale = res / side
     theta = math.radians(prep.rotation)
     cos, sin = math.cos(theta), math.sin(theta)
-    # Output pixel (u, v) -> source: rotate about the crop centre, then scale.
     a = scale * cos
     b = scale * sin
-    m = np.array([
+    return np.array([
         [a, b, res / 2.0 - (a * cx + b * cy)],
         [-b, a, res / 2.0 - (-b * cx + a * cy)],
     ], dtype=np.float64)
+
+
+def frame_source(rgb: np.ndarray, prep: PrepSettings, res: int) -> np.ndarray:
+    """Crop, zoom and rotate the source onto a res x res square (RGB float32 in [0, 1]).
+    Areas outside the source are white."""
+    h, w = rgb.shape[:2]
+    m = frame_matrix(prep, w, h, res)
+    scale = float(np.hypot(m[0, 0], m[0, 1]))
     flags = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
     out = cv2.warpAffine(rgb, m, (res, res), flags=flags, borderMode=cv2.BORDER_CONSTANT,
                          borderValue=(255, 255, 255))
@@ -194,11 +203,32 @@ def target_darkness(gray: np.ndarray, board: BoardConfig) -> np.ndarray:
     return gray.astype(np.float32) if board.invert else (1.0 - gray).astype(np.float32)
 
 
+def importance_factor(imp: np.ndarray) -> np.ndarray:
+    """Mask values to weight factors: 0.5 is neutral, 1.0 triples the weight, 0.0 nearly ignores."""
+    imp = imp.astype(np.float32)
+    return np.where(imp >= 0.5, 1.0 + (imp - 0.5) * 4.0, 0.1 + (imp / 0.5) * 0.9).astype(np.float32)
+
+
+def structure_map(gray: np.ndarray, res: int) -> np.ndarray:
+    """Where the target has edges (eyes, jaw, hair line), in [0, 1], widened a little so the
+    weight covers both sides of each edge."""
+    g = cv2.GaussianBlur(gray.astype(np.float32), (0, 0), max(0.8, res / 500.0))
+    gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
+    mag = cv2.GaussianBlur(np.hypot(gx, gy), (0, 0), max(1.0, res / 160.0))
+    top = float(np.percentile(mag, 99.0))
+    if top <= 1e-6:
+        return np.zeros_like(mag)
+    return np.clip(mag / top, 0.0, 1.0).astype(np.float32)
+
+
 def board_weight(board: BoardConfig, res: int, importance: np.ndarray | None = None,
-                 mask_strength: float = 1.0) -> np.ndarray:
+                 mask_strength: float = 1.0, auto_importance: np.ndarray | None = None,
+                 gray: np.ndarray | None = None, structure_weight: float = 0.0) -> np.ndarray:
     """Importance weights at res px: one inside the board, fading to zero in a narrow band at the
     pin ring (threads pile up at the pins on every real piece; the eye forgives it, so the
-    optimiser should too), times the painted importance mask when there is one."""
+    optimiser should too), times the painted importance mask, the automatic face map and the
+    structure (edge) emphasis when they are given."""
     yy, xx = np.mgrid[0:res, 0:res].astype(np.float32)
     r = res / 2.0
     dist = np.sqrt((xx - r + 0.5) ** 2 + (yy - r + 0.5) ** 2) * board.pixel_mm(res)
@@ -207,10 +237,16 @@ def board_weight(board: BoardConfig, res: int, importance: np.ndarray | None = N
     w = np.clip((outer - dist) / max(outer - inner, 1e-3), 0.0, 1.0)
     if importance is not None:
         imp = cv2.resize(importance.astype(np.float32), (res, res), interpolation=cv2.INTER_LINEAR)
-        # Mask values: 0.5 is neutral, 1.0 triples the weight, 0.0 nearly ignores the area.
-        factor = np.where(imp >= 0.5, 1.0 + (imp - 0.5) * 4.0, 0.1 + (imp / 0.5) * 0.9)
+        factor = importance_factor(imp)
         factor = 1.0 + (factor - 1.0) * mask_strength
         w = w * factor.astype(np.float32)
+    if auto_importance is not None:
+        auto = auto_importance
+        if auto.shape[0] != res:
+            auto = cv2.resize(auto, (res, res), interpolation=cv2.INTER_LINEAR)
+        w = w * importance_factor(auto)
+    if gray is not None and structure_weight > 0:
+        w = w * (1.0 + structure_weight * 1.5 * structure_map(gray, res))
     return w.astype(np.float32)
 
 

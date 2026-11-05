@@ -17,8 +17,16 @@ SAS_PORT=8050
 SAS_DATA=./data
 SAS_WORKERS=2
 TZ=America/Chicago
+COMPOSE_PROFILES=voice
+SAS_PIPER_URL=http://piper:5000
+SAS_PIPER_VOICE=en_US-lessac-medium
 ENV
     echo "wrote .env"
+fi
+# v2 added the Piper voice container; older .env files get the two lines that switch it on.
+if ! grep -q '^SAS_PIPER_URL=' .env; then
+    printf 'COMPOSE_PROFILES=voice\nSAS_PIPER_URL=http://piper:5000\nSAS_PIPER_VOICE=en_US-lessac-medium\n' >> .env
+    echo "enabled the voice profile in .env"
 fi
 mkdir -p data
 docker compose up -d --build

@@ -23,6 +23,8 @@ class Settings:
     preview_res: int        # editor live preview size
     render_res: int         # final preview render size
     allow_origins: str
+    piper_url: str          # Piper HTTP server for build-mode voice ("" = browser voice only)
+    piper_voice: str        # default Piper voice name
 
     @property
     def db_path(self) -> Path:
@@ -44,4 +46,6 @@ def load_settings() -> Settings:
         preview_res=max(200, _int("SAS_PREVIEW_RES", 640)),
         render_res=max(400, _int("SAS_RENDER_RES", 1600)),
         allow_origins=os.environ.get("SAS_ALLOW_ORIGINS", ""),
+        piper_url=os.environ.get("SAS_PIPER_URL", "").strip(),
+        piper_voice=os.environ.get("SAS_PIPER_VOICE", "en_US-lessac-medium").strip() or "en_US-lessac-medium",
     )

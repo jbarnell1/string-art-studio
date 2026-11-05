@@ -1,3 +1,5 @@
 # Snippet for Gatus on the media PC (/mnt/c/homelab/monitoring/gatus.yaml), in the media PC list.
 # The container answers on loopback; the check uses the same *media anchor as its neighbours.
   - { <<: *media, name: String Art Studio, url: "http://127.0.0.1:8050/healthz", conditions: ["[STATUS] == 200", "[BODY].ok == true"] }
+# The Piper voice container is not published on the host; Studio reports it through /api/voice.
+  - { <<: *media, name: String Art voice, url: "http://127.0.0.1:8050/api/voice", conditions: ["[STATUS] == 200", "[BODY].available == true"] }

@@ -28,11 +28,20 @@ One physical 24 inch piece from a v1 plan to calibrate: thread width and `thread
 viewing-distance blur, the light-protection default, and how the rim pile-up really looks. Record the
 results in DECISIONS.md and adjust defaults.
 
-## v2, build mode
+## v2, voice and portraits (built 2026-11-05)
 
-Piper as a separate container with a clip cache on shared storage; pre-rendered clips per pin number
-and phrase; voice choice and speed in settings; optional background music; colour-change pauses.
-Bluetooth clicker mapping page. Cross-device resume is already in place.
+Done:
+- Piper in its own container (compose profile `voice`), three voices baked in, clip cache under
+  `data/voice`, pre-rendering of every pin phrase when voice is switched on, voice and speed choice
+  in build mode, browser speech as the fallback (ADR-013).
+- Bluetooth clicker mapping in build mode (press the clicker's buttons once; stored per device),
+  optional background music from a local file, ducked under the voice.
+- Portraits: local face detection, "Frame the face", automatic face emphasis, structure weight,
+  "Show importance" overlay (ADR-011); engine A regrows after refinement (ADR-012).
+
+Not done in v2:
+- Colour-change pauses (they belong with colour, v3).
+- A separate clicker settings page; the mapping lives in the build-mode bar.
 
 ## v3, colour
 

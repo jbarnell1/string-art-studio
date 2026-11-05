@@ -27,7 +27,9 @@ from stringart.exports import bundle as bundle_mod
 from stringart.exports import fab as fab_mod
 from stringart.exports import sequence as seq_mod
 from stringart.exports import template_pdf
+from stringart import faces as faces_mod
 from stringart.jobs import JobManager
+from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, pin_phrase
 from stringart.prep import (PrepSettings, background_removal_available, encode_source_jpeg, load_source,
                             preview_jpeg)
 
@@ -43,6 +45,7 @@ class Context:
         settings.projects_dir.mkdir(parents=True, exist_ok=True)
         self.db = Database(settings.db_path)
         self.jobs = JobManager(settings, self.db)
+        self.voice = VoiceService(settings.piper_url, settings.data_dir / "voice", settings.piper_voice)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -157,6 +160,11 @@ class PresetIn(BaseModel):
     engine: dict[str, Any] = {}
 
 
+class VoiceIn(BaseModel):
+    voice: str | None = None
+    speed: float = 1.0
+
+
 class ProgressIn(BaseModel):
     step: int
     device: str = ""
@@ -187,6 +195,25 @@ def _read_sequence(ctx: Context, run: dict[str, Any]) -> list[int]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def weight_overlay_png(w) -> bytes:
+    import cv2
+    import numpy as np
+    res = w.shape[0]
+    yy, xx = np.mgrid[0:res, 0:res]
+    r = res / 2.0
+    inside = (xx - r + 0.5) ** 2 + (yy - r + 0.5) ** 2 <= (r * 0.93) ** 2
+    rel = np.where(w >= 1.0, (w - 1.0) / 2.0, -(1.0 - w))      # +1 at triple weight, -1 at zero
+    rel = np.clip(rel, -1.0, 1.0) * inside
+    rgba = np.zeros((res, res, 4), dtype=np.uint8)
+    more = rel > 0
+    rgba[..., 0] = np.where(more, 168, 47)
+    rgba[..., 1] = np.where(more, 50, 112)
+    rgba[..., 2] = np.where(more, 30, 187)
+    rgba[..., 3] = (np.clip(np.abs(rel), 0, 1) * 170).astype(np.uint8)
+    ok, buf = cv2.imencode(".png", cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA))
+    return buf.tobytes()
+
+
 def _attachment(data: bytes, filename: str, media_type: str) -> Response:
     return Response(data, media_type=media_type,
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
@@ -197,7 +224,7 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
     @app.get("/api/health")
     def health(ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
         return {"ok": True, "version": __version__, "background_removal": background_removal_available(),
-                "workers": ctx.settings.workers}
+                "faces": faces_mod.available(), "voice": ctx.voice.configured(), "workers": ctx.settings.workers}
 
     @app.get("/api/defaults")
     def defaults() -> dict[str, Any]:
@@ -271,6 +298,8 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
             old.unlink()
         if files.subject_alpha.exists():
             files.subject_alpha.unlink()
+        if files.faces.exists():
+            files.faces.unlink()
         # Stored re-encoded as JPEG: EXIF rotation applied, size capped, HEIC decoded once.
         (files.root / "source.jpg").write_bytes(encode_source_jpeg(rgb, max_side=2400, quality=93))
         h, w = rgb.shape[:2]
@@ -308,6 +337,28 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         if not m.exists():
             raise HTTPException(404, "no mask")
         return Response(m.read_bytes(), media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/projects/{pid}/faces")
+    def get_faces(pid: str, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
+        """Detected faces (normalised source coordinates) and a suggested portrait frame."""
+        _project_or_404(ctx, pid)
+        info = ctx.jobs.faces(pid)
+        return {"faces": info["faces"], "width": info["width"], "height": info["height"], "frame": info.get("frame")}
+
+    @app.post("/api/projects/{pid}/weightmap")
+    def weightmap(pid: str, body: PreviewIn, ctx: Context = Depends(get_ctx)) -> Response:
+        """The importance weights the optimiser would use, as a PNG overlay: red where an area
+        counts more than normal, blue where it counts less, transparent where it is neutral."""
+        _project_or_404(ctx, pid)
+        prep = PrepSettings.from_dict(body.prep)
+        board = BoardConfig.from_dict(body.board)
+        size = max(200, min(body.size, 800))
+        try:
+            gray = ctx.jobs.build_target(pid, prep, board, size)
+        except FileNotFoundError:
+            raise HTTPException(404, "no image") from None
+        w = ctx.jobs.build_weight(pid, prep, board, size, gray=gray)
+        return Response(weight_overlay_png(w), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/projects/{pid}/preview")
     def preview(pid: str, body: PreviewIn, ctx: Context = Depends(get_ctx)) -> Response:
@@ -451,9 +502,45 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         seq = _read_sequence(ctx, run)
         board = BoardConfig.from_dict(run["board"])
         est = thread_estimate(board, seq)
+        labels = [board.sector_label(i) for i in range(board.pin_count)]
         return {"run_id": rid, "project_id": run["project_id"], "sequence": seq, "pin_count": board.pin_count,
-                "sector_count": board.sector_count, "labels": [board.sector_label(i) for i in range(board.pin_count)],
+                "sector_count": board.sector_count, "labels": labels,
+                "phrases": [pin_phrase(i, lab) for i, lab in enumerate(labels)], "extra_phrases": list(EXTRA_PHRASES),
                 "thread": est.to_dict(), "progress": ctx.db.get_progress(rid), "metrics": run["metrics"]}
+
+    # Voice (Piper) ------------------------------------------------------------------------------
+
+    @app.get("/api/voice")
+    def voice_status(ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
+        return ctx.voice.status()
+
+    @app.get("/api/voice/clip.wav")
+    def voice_clip(text: str, voice: str | None = None, speed: float = 1.0, ctx: Context = Depends(get_ctx)) -> Response:
+        if not ctx.voice.configured():
+            raise HTTPException(503, "no voice server configured")
+        try:
+            data = ctx.voice.clip(text, voice, speed)
+        except VoiceError as err:
+            raise HTTPException(503, str(err)) from err
+        return Response(data, media_type="audio/wav", headers={"Cache-Control": "private, max-age=31536000"})
+
+    @app.post("/api/runs/{rid}/voice/prewarm")
+    def voice_prewarm(rid: str, body: VoiceIn, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
+        """Render every pin phrase this plan can need, so build mode never waits on synthesis."""
+        run = _run_or_404(ctx, rid)
+        if not ctx.voice.status()["available"]:
+            raise HTTPException(503, "voice server not available")
+        board = BoardConfig.from_dict(run["board"])
+        pins = sorted(set(_read_sequence(ctx, run)))
+        phrases = [pin_phrase(i, board.sector_label(i)) for i in pins] + list(EXTRA_PHRASES)
+        return ctx.voice.prewarm(phrases, body.voice, body.speed)
+
+    @app.get("/api/voice/prewarm/{job_id}")
+    def voice_prewarm_status(job_id: str, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
+        job = ctx.voice.prewarm_status(job_id)
+        if job is None:
+            raise HTTPException(404, "unknown job")
+        return job
 
     @app.get("/api/runs/{rid}/template.pdf")
     def run_template(rid: str, paper: str = "letter", ctx: Context = Depends(get_ctx)) -> Response:

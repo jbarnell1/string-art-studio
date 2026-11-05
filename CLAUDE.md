@@ -22,10 +22,12 @@ a vanilla-JS PWA, one container. MIT. Public repo intended; the first install is
 ```
 stringart/
   board.py        Board geometry: pins, chords, sectors, thread length (all millimetres).
-  prep.py         Image prep pipeline (crop, tone, CLAHE, edges, mask, rim weights). Preview and engine share it.
+  prep.py         Image prep pipeline (crop, tone, CLAHE, edges, mask, face and structure weights). Preview and engine share it.
+  faces.py        Local face detection (YuNet in models/), portrait framing, automatic importance map.
+  voice.py        Piper over HTTP with the on-disk clip cache and prewarm jobs; pin_phrase is the one phrase template.
   raster.py       Vectorised line sampling and the anti-aliased renderer's line.
   engine/state.py The shared objective (RenderState): target, weights, coverage, gradient image G.
-  engine/greedy.py   Engine A: greedy with error scoring, two-line bridge, refinement passes.
+  engine/greedy.py   Engine A: greedy with error scoring, two-line bridge, refinement passes, regrow.
   engine/setcover.py Engine B: chord multiset, prune, parity repair, Euler path.
   engine/render.py   Final thread-accurate render and the comparison image.
   exports/        Pin template PDF, SVG/DXF fab files, sequence TXT/CSV/JSON, project bundle ZIP.
@@ -34,7 +36,7 @@ stringart/
   cli.py          `string-art-studio serve` and `string-art-studio generate`.
 tests/            pytest; the API test runs a real tiny generation end to end.
 scripts/          bench.py (engine benchmarks), make_icons.py (logo to icons).
-deploy/           Media PC install script, Tailscale serve owner step, Homepage and Gatus snippets.
+deploy/           Media PC install script, Tailscale serve owner step, Homepage and Gatus snippets, piper/ container.
 ```
 
 ## Working agreement
@@ -56,3 +58,5 @@ deploy/           Media PC install script, Tailscale serve owner step, Homepage 
 - Deployment target: media PC WSL distro `homelab`, Docker Compose, `/mnt/c/homelab/string-art-studio`,
   loopback 8050, Tailscale serve path `/stringart` (owner step). See `docs/RUNBOOK.md`.
 - Sample photos in `samples/` are AI-generated fictional people and a dog; they are safe to publish.
+- Local voice testing: `.env.dev` (ignored) holds `SAS_PIPER_URL=http://127.0.0.1:5000`; build the
+  Piper image from `deploy/piper` in WSL and run it with `-p 127.0.0.1:5000:5000`.

@@ -18,7 +18,7 @@ from stringart.web.app import create_app
 @pytest.fixture()
 def client(tmp_path: Path):
     settings = Settings(data_dir=tmp_path / "data", host="127.0.0.1", port=0, root_path="", workers=1,
-                        preview_res=320, render_res=500, allow_origins="")
+                        preview_res=320, render_res=500, allow_origins="", piper_url="", piper_voice="en_US-lessac-medium")
     app = create_app(settings)
     with TestClient(app) as c:
         yield c
@@ -115,3 +115,25 @@ def test_cancel(client: TestClient):
     assert client.post(f"/api/runs/{rid}/cancel").json()["ok"] is True
     run = _wait_done(client, rid)
     assert run["status"] == "cancelled"
+
+
+def test_faces_weightmap_and_voice_endpoints(client: TestClient):
+    health = client.get("/api/health").json()
+    assert health["faces"] is True and health["voice"] is False
+    p = client.post("/api/projects", json={"name": "Faces"}).json()
+    pid = p["id"]
+    client.post(f"/api/projects/{pid}/image", files={"file": ("photo.jpg", _photo_bytes(), "image/jpeg")})
+    info = client.get(f"/api/projects/{pid}/faces").json()
+    assert info["faces"] == [] and info["frame"] is None and info["width"] == 300
+    r = client.post(f"/api/projects/{pid}/weightmap", json={"prep": {"structure_weight": 1.0}, "board": {}, "size": 256})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content.startswith(b"\x89PNG")
+    assert client.get("/api/voice").json()["available"] is False
+    assert client.get("/api/voice/clip.wav?text=Pin+1.+A+1.").status_code == 503
+    r = client.post(f"/api/projects/{pid}/runs", json={"engine": "a", "board": {"pin_count": 60, "max_lines": 40, "work_res": 200, "min_skip": 5},
+                                                       "params": {"refine_seconds": 0.5}})
+    rid = r.json()["runs"][0]["id"]
+    run = _wait_done(client, rid)
+    assert run["status"] == "done"
+    steps = client.get(f"/api/runs/{rid}/steps").json()
+    assert steps["phrases"][7] == "Pin 7. A 8." and "Voice on." in steps["extra_phrases"]
+    assert client.post(f"/api/runs/{rid}/voice/prewarm", json={"speed": 1.0}).status_code == 503

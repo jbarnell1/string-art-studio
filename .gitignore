@@ -10,3 +10,4 @@ data/
 .DS_Store
 docs/brand/candidates/
 .env
+.env.*

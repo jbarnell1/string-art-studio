@@ -228,10 +228,10 @@
     { group: "mix", key: "mix_b", label: "Blue weight", min: 0, max: 1, step: 0.01 },
   ];
   const PREP_PRESETS = {
-    "Portrait": { gamma: 0.8, black_point: 0.04, white_point: 0.9, clahe_clip: 1.2, edge_strength: 0.3, contrast: 0.1 },
-    "High key": { gamma: 0.7, black_point: 0.02, white_point: 0.8, clahe_clip: 0.8, edge_strength: 0.5 },
-    "Soft": { gamma: 1.0, black_point: 0.0, white_point: 1.0, clahe_clip: 0, edge_strength: 0, contrast: 0 },
-    "Pet": { gamma: 0.85, black_point: 0.05, white_point: 0.92, clahe_clip: 2.0, edge_strength: 0.6, edge_radius: 1.5 },
+    "Portrait": { gamma: 0.78, black_point: 0.04, white_point: 0.9, clahe_clip: 0.6, edge_strength: 0.3, contrast: 0.1, face_emphasis: 1.0, structure_weight: 0.5 },
+    "High key": { gamma: 0.7, black_point: 0.02, white_point: 0.8, clahe_clip: 0.5, edge_strength: 0.5, face_emphasis: 1.0, structure_weight: 0.4 },
+    "Soft": { gamma: 1.0, black_point: 0.0, white_point: 1.0, clahe_clip: 0, edge_strength: 0, contrast: 0, face_emphasis: 0.5, structure_weight: 0 },
+    "Pet": { gamma: 0.85, black_point: 0.05, white_point: 0.92, clahe_clip: 1.2, edge_strength: 0.6, edge_radius: 1.5, face_emphasis: 0, structure_weight: 0.7 },
   };
 
   async function viewStudio(pid) {
@@ -279,7 +279,21 @@
     overlay.setAttribute("viewBox", "0 0 1000 1000");
     const busy = el("span", { class: "pill busy hidden" }, "Updating");
     const hint = el("span", { class: "hint" }, project.has_image ? "Drag to move, scroll to zoom" : "No photo yet");
-    stage.append(img, maskView, overlay, busy, hint);
+    const weightsImg = el("img", { class: "weights hidden", alt: "" });
+    stage.append(img, maskView, weightsImg, overlay, busy, hint);
+    let showWeights = false;
+    let weightsUrl = null;
+    const refreshWeights = debounce(async () => {
+      if (!showWeights || !project.has_image) return;
+      try {
+        const blob = await api.blob(`api/projects/${pid}/weightmap`, { prep, board, size: 512 });
+        const url = URL.createObjectURL(blob);
+        weightsImg.src = url;
+        if (weightsUrl) URL.revokeObjectURL(weightsUrl);
+        weightsUrl = url;
+      } catch (_) { /* overlay is informational */ }
+    }, 200);
+    state.cleanup.push(() => { if (weightsUrl) URL.revokeObjectURL(weightsUrl); });
     previewCol.append(stage);
 
     let viewBlur = false;
@@ -322,6 +336,7 @@
         img.src = url;
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = url;
+        if (showWeights) refreshWeights();
       } catch (err) {
         if (seq === previewSeq) toast("Preview failed: " + err.message);
       } finally {
@@ -408,16 +423,23 @@
       if (!maskDirty) return;
       maskDirty = false;
       const blob = await new Promise((res) => maskCanvas.toBlob(res, "image/png"));
-      try { await api.put(`api/projects/${pid}/mask`, blob); project.has_mask = true; } catch (err) { toast("Mask not saved: " + err.message); }
+      try { await api.put(`api/projects/${pid}/mask`, blob); project.has_mask = true; refreshWeights(); } catch (err) { toast("Mask not saved: " + err.message); }
     }, 800);
     async function clearMask() {
       mctx.fillStyle = "#808080"; mctx.fillRect(0, 0, 512, 512); renderMaskView();
-      try { await api.put(`api/projects/${pid}/mask`, new Blob([])); project.has_mask = false; } catch (err) { toast(err.message); }
+      try { await api.put(`api/projects/${pid}/mask`, new Blob([])); project.has_mask = false; refreshWeights(); } catch (err) { toast(err.message); }
     }
 
     // ---- Preview tools ------------------------------------------------------------------------
     const maskBtn = el("button", { class: "btn", "aria-pressed": "false" }, "Paint importance");
     const blurBtn = el("button", { class: "btn", "aria-pressed": "false" }, "Viewing distance");
+    const impBtn = el("button", { class: "btn", "aria-pressed": "false", title: "Where the optimiser will try hardest: red counts more, blue less" }, "Show importance");
+    impBtn.addEventListener("click", () => {
+      showWeights = !showWeights;
+      impBtn.setAttribute("aria-pressed", String(showWeights));
+      weightsImg.classList.toggle("hidden", !showWeights);
+      if (showWeights) refreshWeights();
+    });
     const replaceBtn = el("button", { class: "btn quiet", onclick: async () => {
       const file = await pickFile($("#filePicker"));
       if (!file) return;
@@ -450,7 +472,7 @@
       hint.textContent = maskMode ? "Paint on the preview" : "Drag to move, scroll to zoom";
     });
     blurBtn.addEventListener("click", () => { viewBlur = !viewBlur; blurBtn.setAttribute("aria-pressed", String(viewBlur)); blurStyle(); });
-    previewCol.append(el("div", { class: "preview-tools" }, [maskBtn, blurBtn, el("span", { class: "spacer" }), replaceBtn]), maskTools);
+    previewCol.append(el("div", { class: "preview-tools" }, [maskBtn, impBtn, blurBtn, el("span", { class: "spacer" }), replaceBtn]), maskTools);
 
     // ---- Runs (versions) under the preview ----------------------------------------------------
     const runsBox = el("div", { class: "runs-list" });
@@ -545,11 +567,32 @@
     // Background removal and mask strength.
     const bgAvailable = !!(health && health.background_removal);
     const bgToggle = el("button", { class: "toggle", role: "switch", "aria-checked": String(!!prep.background_removal), disabled: !bgAvailable, onclick: () => { prep.background_removal = !prep.background_removal; bgToggle.setAttribute("aria-checked", String(prep.background_removal)); changed(); } });
+    const faceChip = el("span", { class: "val" }, project.has_image ? "Looking for faces" : "");
+    const frameBtn = el("button", { class: "btn small", type: "button", disabled: true }, "Frame the face");
+    let faceInfo = null;
+    if (project.has_image && health && health.faces !== false) {
+      api.get(`api/projects/${pid}/faces`).then((info) => {
+        faceInfo = info;
+        const k = info.faces.length;
+        faceChip.textContent = k === 0 ? "No face found" : k === 1 ? "1 face found" : `${k} faces found`;
+        frameBtn.disabled = !k;
+      }).catch(() => { faceChip.textContent = ""; });
+    }
+    frameBtn.addEventListener("click", () => {
+      if (!faceInfo || !faceInfo.frame) return;
+      prep.rotation = 0;
+      Object.assign(prep, faceInfo.frame);
+      ["crop_cx", "crop_cy", "crop_size", "rotation"].forEach(syncField);
+      changed();
+    });
     const subjectBody = el("div", {}, [
+      el("div", { class: "field" }, [el("label", {}, ["Face", faceChip]), el("div", { class: "btn-row" }, [frameBtn]), el("div", { class: "help" }, "Frames the face so it fills the circle, which is the framing that strings best. Zoom out with the wheel if you want shoulders.")]),
+      rangeField(prep, { key: "face_emphasis", label: "Face emphasis", min: 0, max: 2, step: 0.1, reset: defaults.prep.face_emphasis, help: "Detected faces count about twice as much as the rest, eyes and mouth more. Does nothing when no face is found." }, changed),
+      rangeField(prep, { key: "structure_weight", label: "Structure", min: 0, max: 2, step: 0.1, reset: defaults.prep.structure_weight, help: "Edges in the target (eyes, jaw, hair line) count more, so they stay crisp instead of dissolving into tone." }, changed),
       el("div", { class: "switch" }, [el("div", {}, [el("div", { class: "label" }, "Remove background"), el("div", { class: "sub" }, bgAvailable ? "Isolates the subject with a local model (rembg). The first preview after switching it on takes a few seconds." : "Not installed on this server. Install the rembg extra to enable it.")]), bgToggle]),
       rangeField(prep, { key: "mask_strength", label: "Importance mask strength", min: 0, max: 3, step: 0.1, reset: 1, help: "How much the painted mask counts. 0 ignores it." }, changed),
     ]);
-    settingsCol.append(section("Subject", "Optional one-click subject isolation, and how strongly the painted importance mask weighs in.", subjectBody));
+    settingsCol.append(section("Subject", "Faces are found automatically and weighed up; press Show importance on the preview to see what the optimiser will care about. Paint the mask for anything else.", subjectBody));
 
     // Board.
     const unitsSeg = el("div", { class: "seg", role: "group", "aria-label": "Units" });
@@ -772,6 +815,7 @@
         ["Repair lines added (B)", (m) => m.engine === "b" ? fmt.int(m.repair_lines) : "–", null],
         ["Error added by repair (B)", (m) => m.engine === "b" ? (m.repair_error >= 0 ? "+" : "") + fmt.fixed(m.repair_error, 4) : "–", null],
         ["Refinement changes (A)", (m) => m.engine === "a" ? fmt.int(m.refined_changes) : "–", null],
+        ["Lines regrown after refinement (A)", (m) => m.engine === "a" ? fmt.int(m.regrown_lines) : "–", null],
         ["Coverage per pass", (m) => fmt.fixed(m.coverage_per_pass, 3), null],
       ];
       const done = shown.filter((r) => r.status === "done" && r.metrics);
@@ -864,10 +908,14 @@
   // Build mode: phone first, thread in both hands
   // ---------------------------------------------------------------------------------------------
   async function viewBuild(runId) {
-    const data = await api.get(`api/runs/${runId}/steps`);
+    const [data, voiceInfo] = await Promise.all([
+      api.get(`api/runs/${runId}/steps`),
+      api.get("api/voice").catch(() => ({ available: false, voices: [], default: "" })),
+    ]);
     const seq = data.sequence;
     const n = data.pin_count;
     const labels = data.labels;
+    const phrases = data.phrases || [];
     const total = Math.max(seq.length - 1, 0);
     const storeKey = `sas-build-${runId}`;
     let step = Number((data.progress && data.progress.step) || 0);
@@ -884,6 +932,11 @@
     let voice = !!prefs.voice;
     let pace = Number(prefs.pace || 0);
     let rate = Number(prefs.rate || 1);
+    const serverOk = !!voiceInfo.available;
+    let source = prefs.source === "browser" || !serverOk ? "browser" : "server";
+    let serverVoice = prefs.serverVoice || voiceInfo.default;
+    if (serverOk && !voiceInfo.voices.some((v) => v.name === serverVoice)) serverVoice = voiceInfo.default;
+    const keys = Object.assign({ next: [], back: [] }, prefs.keys || {});
     let timer = null;
 
     const stepEl = el("span", { class: "step num" });
@@ -894,35 +947,118 @@
     const backBtn = el("button", { class: "btn" }, "Back");
     const nextBtn = el("button", { class: "btn primary" }, "Next");
     const voiceBtn = el("button", { class: "btn small", "aria-pressed": String(voice) }, "Voice");
+    const voiceOptions = [["browser", "Browser voice"]].concat(voiceInfo.voices.map((v) => [v.name, v.language ? `${v.name} (${v.language})` : v.name]));
+    const voiceSel = el("select", { "aria-label": "Voice" }, voiceOptions.map(([v, t]) => el("option", { value: v, selected: v === (source === "browser" ? "browser" : serverVoice) }, t)));
+    if (!serverOk) voiceSel.classList.add("hidden");
     const paceSel = el("select", { "aria-label": "Auto-advance" }, [[0, "Manual"], [3, "Every 3 s"], [5, "Every 5 s"], [8, "Every 8 s"], [12, "Every 12 s"]].map(([v, t]) => el("option", { value: v, selected: v === pace }, t)));
     const rateSel = el("select", { "aria-label": "Voice speed" }, [[0.8, "Slow voice"], [1, "Normal voice"], [1.25, "Fast voice"]].map(([v, t]) => el("option", { value: v, selected: v === rate }, t)));
     const pauseBtn = el("button", { class: "btn small hidden" }, "Pause");
-    const bar = el("div", { class: "build-bar" }, [backBtn.cloneNode(false), voiceBtn, rateSel, paceSel, pauseBtn]);
-    bar.firstChild.remove();
+    const clickerBtn = el("button", { class: "btn small", title: "Map the buttons of a Bluetooth clicker or presenter" }, "Clicker");
+    const musicBtn = el("button", { class: "btn small", "aria-pressed": "false", title: "Play a music file from this device quietly under the voice" }, "Music");
+    const status = el("span", { class: "status" });
+    const bar = el("div", { class: "build-bar" }, [voiceBtn, voiceSel, rateSel, paceSel, pauseBtn, clickerBtn, musicBtn, status]);
     const controls = el("div", { class: "build-controls" }, [backBtn, nextBtn]);
     const wrap = el("div", { class: "build" }, [el("div", {}, [top, progress]), main, el("div", {}, [bar, controls])]);
     sheet.append(wrap);
 
-    function savePrefs() { localStorage.setItem("sas-build-prefs", JSON.stringify({ voice, pace, rate })); }
+    function savePrefs() { localStorage.setItem("sas-build-prefs", JSON.stringify({ voice, pace, rate, source, serverVoice, keys })); }
     const persist = debounce(() => {
       localStorage.setItem(storeKey, String(step));
       localStorage.setItem(storeKey + "-at", String(Date.now()));
       api.put(`api/runs/${runId}/progress`, { step, device: navigator.platform || "" }).catch(() => { /* offline: local copy stands */ });
     }, 1200);
 
-    function direction(from, to) {
-      const cw = ((to - from) % n + n) % n;
-      if (cw === 0) return "same pin";
-      return cw <= n / 2 ? `${cw} pins clockwise` : `${n - cw} pins counter-clockwise`;
+    // ---- Voice: Piper clips from the server when it has them, the browser's speech otherwise --
+    const player = new Audio();
+    player.preload = "auto";
+    const clipCache = new Map();
+    let clipToken = 0;
+    function clipKey(text) { return `${serverVoice}|${rate}|${text}`; }
+    async function fetchClip(text) {
+      const key = clipKey(text);
+      if (clipCache.has(key)) return clipCache.get(key);
+      const res = await fetch(`api/voice/clip.wav?text=${encodeURIComponent(text)}&voice=${encodeURIComponent(serverVoice)}&speed=${rate}`);
+      if (!res.ok) throw new Error("clip " + res.status);
+      const url = URL.createObjectURL(await res.blob());
+      if (clipCache.size > 80) {
+        const first = clipCache.keys().next().value;
+        URL.revokeObjectURL(clipCache.get(first));
+        clipCache.delete(first);
+      }
+      clipCache.set(key, url);
+      return url;
     }
-    function speak(text) {
-      if (!voice || !("speechSynthesis" in window)) return;
+    function speakBrowser(text) {
+      if (!("speechSynthesis" in window)) return;
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = rate;
       window.speechSynthesis.speak(u);
     }
-    function sayLabel(pin) { return labels[pin].replace(/^([A-Z])(\d+)$/, "$1 $2"); }
+    async function speak(text) {
+      if (!voice || !text) return;
+      if (source !== "server") { speakBrowser(text); return; }
+      const token = ++clipToken;
+      try {
+        const url = await fetchClip(text);
+        if (token !== clipToken) return;
+        player.pause();
+        player.src = url;
+        duck(true);
+        await player.play();
+      } catch (_) {
+        if (token === clipToken) speakBrowser(text);
+      }
+    }
+    function prefetch(text) { if (voice && source === "server" && text) fetchClip(text).catch(() => { /* will fall back */ }); }
+    player.addEventListener("ended", () => duck(false));
+    player.addEventListener("pause", () => duck(false));
+
+    let prewarmTimer = null;
+    async function prewarm() {
+      if (!voice || source !== "server") { status.textContent = ""; return; }
+      try {
+        let job = await api.post(`api/runs/${runId}/voice/prewarm`, { voice: serverVoice, speed: rate });
+        clearInterval(prewarmTimer);
+        const show = () => { status.textContent = job.finished ? (job.failed ? `Voice: ${job.failed} clips failed` : "") : `Preparing voice ${job.done} of ${job.total}`; };
+        show();
+        if (!job.finished) {
+          prewarmTimer = setInterval(async () => {
+            try { job = await api.get(`api/voice/prewarm/${job.id}`); } catch (_) { job.finished = true; }
+            show();
+            if (job.finished) clearInterval(prewarmTimer);
+          }, 2000);
+        }
+      } catch (err) {
+        status.textContent = "Server voice unavailable, using the browser";
+        source = "browser";
+      }
+    }
+
+    // ---- Background music from a local file, ducked under the voice ---------------------------
+    const music = new Audio();
+    music.loop = true;
+    music.volume = 0.35;
+    function duck(on) { if (music.src && !music.paused) music.volume = on ? 0.12 : 0.35; }
+    musicBtn.addEventListener("click", async () => {
+      if (!music.src) {
+        const file = await pickFile($("#musicPicker"));
+        if (!file) return;
+        music.src = URL.createObjectURL(file);
+        musicBtn.textContent = file.name.replace(/\.[^.]+$/, "").slice(0, 18);
+      }
+      if (music.paused) { try { await music.play(); } catch (_) { toast("Could not play that file"); return; } }
+      else music.pause();
+      musicBtn.setAttribute("aria-pressed", String(!music.paused));
+    });
+
+    // ---- Step display -------------------------------------------------------------------------
+    function direction(from, to) {
+      const cw = ((to - from) % n + n) % n;
+      if (cw === 0) return "same pin";
+      return cw <= n / 2 ? `${cw} pins clockwise` : `${n - cw} pins counter-clockwise`;
+    }
+    function phrase(pin) { return phrases[pin] || `Pin ${pin}. ${labels[pin].replace(/^([A-Z])(\d+)$/, "$1 $2")}.`; }
     function render(announce) {
       stepEl.textContent = `Step ${fmt.int(step)} of ${fmt.int(total)}`;
       progress.firstChild.style.width = `${(step / Math.max(total, 1)) * 100}%`;
@@ -945,7 +1081,8 @@
         el("div", { class: "thread" }, `${fmt.int(total - step)} lines left`),
       );
       backBtn.disabled = step === 0;
-      if (announce) speak(`Pin ${to}. ${sayLabel(to)}.`);
+      if (announce) speak(phrase(to));
+      if (after !== null) prefetch(phrase(after));
     }
     function advance(delta, announce = true) {
       const next = clamp(step + delta, 0, total);
@@ -966,17 +1103,69 @@
     main.addEventListener("click", () => advance(1));
     nextBtn.addEventListener("click", () => advance(1));
     backBtn.addEventListener("click", () => advance(-1));
-    voiceBtn.addEventListener("click", () => { voice = !voice; voiceBtn.setAttribute("aria-pressed", String(voice)); savePrefs(); if (voice) speak("Voice on"); });
-    rateSel.addEventListener("change", () => { rate = Number(rateSel.value); savePrefs(); });
+    voiceBtn.addEventListener("click", () => {
+      voice = !voice;
+      voiceBtn.setAttribute("aria-pressed", String(voice));
+      savePrefs();
+      if (voice) { speak("Voice on."); prewarm(); } else { status.textContent = ""; clearInterval(prewarmTimer); }
+    });
+    voiceSel.addEventListener("change", () => {
+      if (voiceSel.value === "browser") source = "browser"; else { source = "server"; serverVoice = voiceSel.value; }
+      savePrefs();
+      if (voice) { speak("Voice on."); prewarm(); }
+    });
+    rateSel.addEventListener("change", () => { rate = Number(rateSel.value); savePrefs(); if (voice) prewarm(); });
     paceSel.addEventListener("change", () => { pace = Number(paceSel.value); savePrefs(); if (pace) startAuto(); else { stopAuto(); pauseBtn.classList.add("hidden"); } });
-    pauseBtn.addEventListener("click", () => { if (timer) { stopAuto(); pauseBtn.textContent = "Resume"; } else { startAuto(); } });
+    pauseBtn.addEventListener("click", () => { if (timer) { stopAuto(); pauseBtn.textContent = "Resume"; speak("Paused."); } else { startAuto(); speak("Resuming."); } });
+
+    // ---- Keys: mapped clicker buttons first, then the usual keys -------------------------------
+    let mapping = null;
+    function clickerLabel() {
+      const name = (k) => (k && k.length ? k[0].replace(/^(Key|Digit|Numpad)/, "") : "");
+      clickerBtn.textContent = keys.next.length ? `Clicker: ${name(keys.next)}${keys.back.length ? " / " + name(keys.back) : ""}` : "Clicker";
+    }
+    clickerLabel();
+    clickerBtn.addEventListener("click", () => {
+      if (mapping) { mapping = null; clickerLabel(); return; }
+      mapping = "next";
+      clickerBtn.textContent = "Press the NEXT button";
+      status.textContent = "Then the BACK button, or Escape to skip it. Click again to cancel.";
+    });
     const onKey = (e) => {
+      if (mapping) {
+        e.preventDefault();
+        const code = e.code || e.key;
+        if (mapping === "next") {
+          keys.next = [code];
+          mapping = "back";
+          clickerBtn.textContent = "Press the BACK button";
+        } else {
+          keys.back = e.key === "Escape" ? [] : [code];
+          mapping = null;
+          status.textContent = "";
+          clickerLabel();
+        }
+        savePrefs();
+        return;
+      }
       if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+      const code = e.code || e.key;
+      if (keys.next.includes(code)) { e.preventDefault(); advance(1); return; }
+      if (keys.back.includes(code)) { e.preventDefault(); advance(-1); return; }
       if ([" ", "Enter", "ArrowRight", "ArrowDown", "PageDown", "MediaTrackNext"].includes(e.key)) { e.preventDefault(); advance(1); }
       else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace", "MediaTrackPrevious"].includes(e.key)) { e.preventDefault(); advance(-1); }
     };
     document.addEventListener("keydown", onKey);
-    state.cleanup.push(() => { document.removeEventListener("keydown", onKey); stopAuto(); if ("speechSynthesis" in window) window.speechSynthesis.cancel(); });
+    state.cleanup.push(() => {
+      document.removeEventListener("keydown", onKey);
+      stopAuto();
+      clearInterval(prewarmTimer);
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      player.pause();
+      music.pause();
+      if (music.src) URL.revokeObjectURL(music.src);
+      clipCache.forEach((url) => URL.revokeObjectURL(url));
+    });
 
     // Keep the screen on while building.
     let lock = null;
@@ -989,6 +1178,7 @@
     requestLock();
 
     render(false);
+    if (voice) prewarm();
     if (pace) startAuto();
   }
 

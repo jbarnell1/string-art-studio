@@ -9,6 +9,10 @@
 # (Tailscale: `tailscale serve --bg --set-path /stringart http://127.0.0.1:8050`), set
 # SAS_ROOT_PATH=/stringart so the app knows where it lives.
 #
+# Voice (build mode reads pin numbers aloud with Piper): set COMPOSE_PROFILES=voice and
+# SAS_PIPER_URL=http://piper:5000 in .env, or run `docker compose --profile voice up -d --build`.
+# Without it build mode uses the browser's own speech.
+#
 # Upgrade: git pull && docker compose up -d --build
 
 name: string-art-studio
@@ -25,6 +29,8 @@ services:
       SAS_ROOT_PATH: ${SAS_ROOT_PATH:-}
       SAS_WORKERS: ${SAS_WORKERS:-2}
       SAS_RENDER_RES: ${SAS_RENDER_RES:-1600}
+      SAS_PIPER_URL: ${SAS_PIPER_URL:-}
+      SAS_PIPER_VOICE: ${SAS_PIPER_VOICE:-en_US-lessac-medium}
       TZ: ${TZ:-UTC}
     volumes:
       - ${SAS_DATA:-./data}:/data
@@ -34,3 +40,19 @@ services:
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
+
+  piper:
+    build: deploy/piper
+    image: ${SAS_PIPER_IMAGE:-string-art-studio-piper:local}
+    container_name: string-art-piper
+    restart: unless-stopped
+    profiles: ["voice"]
+    # Reachable from the studio container only; nothing is published on the host.
+    expose: ["5000"]
+    environment:
+      PIPER_VOICE: ${SAS_PIPER_VOICE:-en_US-lessac-medium}
+    cpus: ${SAS_PIPER_CPUS:-2}
+    mem_limit: ${SAS_PIPER_MEM:-1g}
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }

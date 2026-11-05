@@ -18,6 +18,22 @@ Background removal is optional and heavy (onnxruntime plus a 170 MB model on fir
 build with the extra: add `RUN pip install ".[bgremove]"` after the install line in the Dockerfile, or
 install `rembg` in a local venv; the Subject panel lights up when it is importable.
 
+## Voice (Piper)
+
+Build mode reads pin numbers aloud. With the `voice` compose profile a second container runs Piper
+(`deploy/piper/Dockerfile`, three English voices baked in; add more with the `PIPER_VOICES` build
+argument). Set in `.env`:
+
+```
+COMPOSE_PROFILES=voice
+SAS_PIPER_URL=http://piper:5000
+SAS_PIPER_VOICE=en_US-lessac-medium
+```
+
+Then `docker compose up -d --build`. `GET /api/voice` reports `available: true` when Studio can reach
+it. Clips are cached under `data/voice/`; delete that folder to re-render after a voice change.
+Without Piper the Voice button uses the browser's own speech.
+
 ## Run it without Docker
 
 ```bash
@@ -76,6 +92,16 @@ Weekly auto-update: add `string-art-studio` to the loop in `/mnt/c/homelab/updat
 Back up the `data/` folder (SQLite in WAL mode: stop the container or copy `studio.sqlite3` with
 its `-wal` file). Restore by putting the folder back and starting the container. A single project
 can also travel as a bundle ZIP from the results page.
+
+## Portraits that string well
+
+1. Press "Frame the face" in the Subject panel, or crop so the face fills the circle.
+2. Pick the Portrait tone preset. Lower the white point until the backdrop goes white (0.8 for a grey
+   studio backdrop), keep gamma 0.75 to 0.8.
+3. Press "Show importance" on the preview: faces and edges should be red. Paint the mask for anything
+   else that matters (a ring, a logo on a shirt).
+4. Generate engine A. Expect 2,200 to 3,000 lines; the "regrown" number in the metrics table shows the
+   lines added after refinement.
 
 ## Calibration after the pilot build
 

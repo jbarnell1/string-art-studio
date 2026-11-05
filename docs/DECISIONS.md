@@ -4,6 +4,42 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-013 - Piper runs as its own container; Studio caches every clip on disk
+**2026-11-05.** Build mode's voice in v2 is Piper (piper1-gpl) behind its small HTTP server
+(`POST /synthesize`, `GET /voices`) in a second container, `deploy/piper/Dockerfile`, with three
+English voices baked in so it works offline. It is GPL-3.0, so it stays a separate process and image
+and the studio keeps its MIT licence; the studio only speaks HTTP to it. Studio keeps a clip cache
+under `data/voice/<voice>/<hash>.wav` keyed by voice, speed and text, pre-renders every pin phrase of
+a plan when voice is switched on ("Preparing voice 120 of 244"), and the phone plays cached WAVs
+through one audio element with the next phrase prefetched. The compose profile `voice` and
+`SAS_PIPER_URL` turn it on; without them, or when Piper is down, the browser's own speech is used,
+so nothing breaks. The per-pin phrase ("Pin 37. C 14.") is defined once on the server
+(`voice.pin_phrase`) and sent with the build steps so the cache always hits.
+
+### ADR-012 - Engine A regrows after refinement, and refines worst lines first
+**2026-11-05.** On portraits the greedy walk ends with "no improving line" at 2,000 to 2,400 lines
+while the line budget is 4,000. Refinement then moves hundreds of lines, which frees error the walk
+could not reach before. Engine A now walks again from the sequence's last pin after refinement; on
+the samples that adds 300 to 500 lines and lowers the error further (bench: 2,925 lines instead of
+about 2,400, error 0.153 instead of 0.165 at the same settings). Refinement's first pass also visits
+the middle pins in order of how much removing their two lines would help, so the lines doing the
+most harm get the first chance at a better pin; later passes stay random. `regrown_lines` is
+reported in the run metrics.
+
+### ADR-011 - Faces are detected locally and weighed up; edges count more
+**2026-11-05.** The painted importance mask works but needs the user to know to paint the eyes. v2
+bundles YuNet (OpenCV's 227 KB face detector, MIT) and does three things with it: a "Frame the face"
+button that sets the crop so the face fills the circle (the framing that strings best), an automatic
+importance map (face ellipse about twice the weight, eyes, nose and mouth up to three times, scaled
+by `face_emphasis`, default 1.0), and a "Show importance" overlay on the preview so what the
+optimiser cares about is visible. A second weight, `structure_weight` (default 0.5), multiplies the
+weights along edges of the target so eyes, jaw and hair line stay crisp instead of dissolving into
+tone. Both are plain multipliers on `W`, so the objective is unchanged and the painted mask still
+composes with them. Bench on the man sample at the same tone settings: face-region error 0.248
+without, 0.245 with face emphasis; the visible difference (eye sockets, nose shadow) is larger than
+the number suggests because the error is dominated by the hair mass. Detection never leaves the
+server and is cached beside the photo in `faces.json`.
+
 ### ADR-010 - Deploy on the media PC under /stringart, port 8050
 **2026-11-05.** The owner asked for this app to run on the media PC (desktop-4l95il9), not jon-desktop.
 Port 8040 there is taken by Highlights, so the container binds 127.0.0.1:8050. It is published by

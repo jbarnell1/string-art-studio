@@ -25,6 +25,7 @@ from stringart.engine.greedy import run_greedy
 from stringart.engine.render import comparison_image, encode_jpeg, encode_png, render_rgb
 from stringart.engine.setcover import run_setcover
 from stringart.engine.state import EngineParams, RenderState
+from stringart.faces import auto_importance, detect_faces, portrait_frame
 from stringart.prep import (PrepSettings, board_weight, decode_mask_png, load_source, prepare_target,
                             remove_background, target_darkness)
 
@@ -56,6 +57,10 @@ class ProjectFiles:
     @property
     def subject_alpha(self) -> Path:
         return self.root / "subject_alpha.npy"
+
+    @property
+    def faces(self) -> Path:
+        return self.root / "faces.json"
 
     def run_dir(self, run_id: str) -> Path:
         d = self.runs / run_id
@@ -153,7 +158,33 @@ class JobManager:
         alpha = self.subject_alpha(project_id, rgb, compute=prep.background_removal) if prep.background_removal else None
         return prepare_target(rgb, prep, board, res, subject_alpha=alpha)
 
-    def build_weight(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int) -> np.ndarray:
+    def faces(self, project_id: str) -> dict[str, Any]:
+        """Detected faces for the project's photo, cached beside it (keyed by the file's mtime)."""
+        files = self.files(project_id)
+        src = files.source
+        if src is None:
+            return {"faces": [], "width": 0, "height": 0, "frame": None}
+        mtime = src.stat().st_mtime
+        if files.faces.exists():
+            try:
+                cached = json.loads(files.faces.read_text(encoding="utf-8"))
+                if cached.get("mtime") == mtime:
+                    return cached
+            except (ValueError, OSError):
+                pass
+        rgb = self.images.get(src)
+        h, w = rgb.shape[:2]
+        faces = detect_faces(rgb)
+        out = {"mtime": mtime, "width": w, "height": h, "faces": faces, "frame": portrait_frame(faces, w, h) if faces else None}
+        try:
+            files.faces.write_text(json.dumps(out), encoding="utf-8")
+        except OSError:
+            pass
+        return out
+
+    def build_weight(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int,
+                     gray: np.ndarray | None = None) -> np.ndarray:
+        """Weights as the optimiser uses them: rim fade, painted mask, detected faces, structure."""
         files = self.files(project_id)
         importance = None
         if files.mask.exists():
@@ -161,7 +192,13 @@ class JobManager:
                 importance = decode_mask_png(files.mask.read_bytes())
             except ValueError:
                 importance = None
-        return board_weight(board, res, importance, prep.mask_strength)
+        auto = None
+        if prep.face_emphasis > 0:
+            info = self.faces(project_id)
+            if info["faces"]:
+                auto = auto_importance(info["faces"], prep, info["width"], info["height"], res, prep.face_emphasis)
+        return board_weight(board, res, importance, prep.mask_strength, auto_importance=auto, gray=gray,
+                            structure_weight=prep.structure_weight)
 
     # Jobs ---------------------------------------------------------------------------------------
 
@@ -198,7 +235,7 @@ class JobManager:
             res = board.work_res
             gray = self.build_target(project_id, prep, board, res)
             target = target_darkness(gray, board)
-            weight = self.build_weight(project_id, prep, board, res)
+            weight = self.build_weight(project_id, prep, board, res, gray=gray)
             state = RenderState(target, weight, board, light_protection=params.light_protection)
             state.cancel_check = prog.cancel.is_set
             # The target as the optimiser saw it, for the compare view.

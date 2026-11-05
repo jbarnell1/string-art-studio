@@ -193,6 +193,7 @@ table.data tr.clickable:hover td { background: var(--raised); }
 .preview-stage img, .preview-stage canvas, .preview-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .preview-stage img { object-fit: fill; }
 .preview-stage canvas.mask { opacity: .55; pointer-events: none; }
+.preview-stage img.weights { pointer-events: none; }
 .preview-stage svg { pointer-events: none; }
 .preview-stage .busy { position: absolute; top: 10px; left: 10px; }
 .preview-stage .hint { position: absolute; left: 10px; bottom: 10px; font-size: var(--fs-small); color: var(--muted); background: rgba(255,255,255,.85); padding: 2px 6px; border-radius: 4px; }
@@ -257,8 +258,16 @@ body.build-mode .sheet { margin: 0; border: 0; border-radius: 0; padding: 0; hei
 .build-progress { height: 4px; background: var(--well); }
 .build-progress i { display: block; height: 100%; background: var(--accent); }
 .build-done { padding: 40px 24px; text-align: center; }
+.build-bar .status { font-size: var(--fs-small); color: var(--muted); }
+.build-bar .btn[aria-pressed="true"] { background: var(--active); border-color: var(--control); }
 
 /* Phone ------------------------------------------------------------------------------------ */
+/* Mid widths (a laptop with the sidebar open): the lead text sits above its panel so the sliders
+   keep a usable width. */
+@media (max-width: 1440px) {
+  .settings-section { grid-template-columns: 1fr; gap: 12px; }
+}
+
 @media (max-width: 900px) {
   .frame { grid-template-columns: 1fr; grid-template-areas: "top" "sheet"; }
   .sidebar { position: fixed; top: 0; bottom: 0; left: 0; width: min(84vw, 300px); z-index: 30; transform: translateX(-102%); transition: transform .18s; background: var(--surface); border-right: 1px solid var(--border); }

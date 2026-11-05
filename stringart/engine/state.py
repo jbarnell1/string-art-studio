@@ -69,6 +69,7 @@ class RunResult:
     repair_lines: int = 0
     repair_error: float = 0.0
     refined_changes: int = 0
+    regrown_lines: int = 0
     stop_reason: str = ""
     cancelled: bool = False
 

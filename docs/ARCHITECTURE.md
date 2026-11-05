@@ -53,7 +53,13 @@ the symmetric weighted RMS in [0, 1].
 Engine A (`greedy.py`): from the current pin score every allowed next pin, take the best, repeat.
 When nothing from the current pin helps, look one line ahead and take the pair if it still lowers
 the error (a bridge, capped at 5% of the line budget). Then refinement passes within a time budget:
-replace a middle pin with the best alternative, drop back-and-forth pairs that hurt.
+replace a middle pin with the best alternative (worst lines first, then random order), drop
+back-and-forth pairs that hurt. Then the walk continues from the last pin, because refinement frees
+error it could not reach before (ADR-012).
+
+Weights `W` (`prep.board_weight`): one inside the board, fading to zero in the band at the pins
+(ADR-005), times the painted mask, times the automatic face map from `faces.py` (YuNet, ADR-011),
+times `1 + structure_weight * edges(T)`.
 
 Engine B (`setcover.py`): score all chords, add the best batch, prune chords whose removal helps,
 alternate; then pair odd-degree pins, join components with doubled chords, and trace an Eulerian
@@ -79,6 +85,8 @@ All under `/api`. `GET /api/docs` is the live OpenAPI page.
 | `POST /projects/{id}/image`, `GET .../image?size=` | Upload (JPEG, PNG, HEIC...), thumbnails |
 | `PUT/GET /projects/{id}/mask` | Painted importance mask (512 px grayscale PNG) |
 | `POST /projects/{id}/preview` | Live target preview JPEG for given prep and board |
+| `GET /projects/{id}/faces` | Detected faces (normalised source coordinates) and a suggested frame |
+| `POST /projects/{id}/weightmap` | The importance weights as a PNG overlay (red more, blue less) |
 | `POST /projects/{id}/runs` | Start engine a, b or both (both share a group_id) |
 | `GET /runs/{id}`, `GET .../events` (SSE), `POST .../cancel`, `PATCH`, `DELETE` | Run status and control |
 | `GET /runs/{id}/{live.jpg,render.png,target.jpg,compare.jpg?blur=1}` | Pictures |
@@ -87,6 +95,8 @@ All under `/api`. `GET /api/docs` is the live OpenAPI page.
 | `GET /runs/{id}/fab.{svg,dxf}?variant=holes|ring&hole=` | Fab files |
 | `GET/PUT /runs/{id}/progress` | Build progress (step, device) |
 | `GET/POST/DELETE /presets` | Board and engine presets |
+| `GET /voice`, `GET /voice/clip.wav?text=&voice=&speed=` | Piper status and cached clips (503 without Piper) |
+| `POST /runs/{id}/voice/prewarm`, `GET /voice/prewarm/{job}` | Pre-render every pin phrase of a plan |
 | `GET /projects/{id}/bundle.zip`, `POST /projects/import` | Move a project between instances |
 
 ## Path prefix and PWA scope
@@ -105,8 +115,11 @@ data/
     source.jpg              re-encoded upload (EXIF applied, max 2400 px)
     mask.png                importance mask, optional
     subject_alpha.npy       cached background-removal alpha, optional
+    faces.json              cached face detection for source.jpg
     runs/<run id>/
       target.jpg  live.jpg  sequence.json  render.png  compare.jpg  compare_blur.jpg
 ```
+
+  voice/<voice>/<hash>.wav  Piper clips, keyed by voice, speed and text (safe to delete)
 
 Back up `data/` and nothing else.

@@ -12,6 +12,9 @@ template and laser or CNC files, then string the piece from your phone with huge
 - Image editor with crop, zoom and rotation inside the frame, brightness, contrast, gamma, black and
   white points, local contrast (CLAHE), channel mix, edge emphasis, tone presets, a painted importance
   mask (eyes and mouth count more), a viewing-distance preview and optional local background removal.
+- Portrait help: faces are detected locally (OpenCV YuNet, bundled), one button frames the face so
+  it fills the circle, faces and their features are weighed up automatically, edges count more so
+  features stay crisp, and a "Show importance" overlay shows what the optimiser will care about.
 - Board configuration in millimetres or inches: diameter, pin count, inset, pin and thread size,
   thread and board colour, inverted (light thread on a dark board), minimum pin skip, maximum lines,
   viewing distance, sector labels. Save any configuration as a preset.
@@ -26,8 +29,10 @@ template and laser or CNC files, then string the piece from your phone with huge
   100 mm check bar), SVG and DXF fab files (holes or a notched ring), sequence as TXT, CSV or JSON, the
   render and comparison pictures, and a project bundle ZIP to move a project between instances.
 - Build mode for the phone: current and next pin at a size you can read with thread in both hands,
-  sector letters, clockwise direction hints, tap or clicker to advance, auto-advance, voice, screen
-  wake lock, and progress that resumes on another device.
+  sector letters, clockwise direction hints, tap or clicker to advance (map any Bluetooth clicker's
+  buttons once), auto-advance, voice (Piper in its own container with a clip cache, or the browser's
+  speech), background music from a local file ducked under the voice, screen wake lock, and progress
+  that resumes on another device.
 
 ## Run it
 
@@ -47,9 +52,10 @@ Details: [docs/RUNBOOK.md](docs/RUNBOOK.md) (running, backups, calibration),
 
 ## Getting a good result
 
-Crop tight to the face so it fills the circle, push the background to white with the white point,
-and lower gamma to 0.7 to 0.85 so skin gets thread. Paint the eyes and mouth as more important. Then
-generate both engines and compare. Expect 2,000 to 4,000 lines and 800 to 1,400 m of thread on a 24
+Press "Frame the face" (or crop so the face fills the circle), pick the Portrait preset, push the
+background to white with the white point, and keep gamma at 0.75 to 0.8 so skin gets thread. Faces
+are weighed up automatically; paint the mask for anything else. Then generate both engines and
+compare. Expect 2,000 to 4,000 lines and 800 to 1,400 m of thread on a 24
 inch board with 240 pins. Before buying thread, build one piece and calibrate the thread width and
 opacity against it (RUNBOOK, "Calibration").
 
@@ -61,6 +67,6 @@ at 100%, tape it to the board, hammer the brads through the marks, peel the pape
 
 ## Status
 
-v1 (generate and compare) is built; the pilot physical build and its calibration are next, then
-Piper voice (v2) and colour (v3). Sample photos in `samples/` are AI-generated fictional people and a
+v1 (generate and compare) and v2 (Piper voice, portrait help) are built; the pilot physical build
+and its calibration are next, then colour (v3). Sample photos in `samples/` are AI-generated fictional people and a
 dog. MIT licence.

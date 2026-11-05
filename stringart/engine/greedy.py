@@ -1,4 +1,4 @@
-"""Engine A: greedy with error scoring, then refinement passes."""
+"""Engine A: greedy with error scoring, then refinement passes, then a regrow from the end."""
 from __future__ import annotations
 
 import random
@@ -14,48 +14,57 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
     board = state.board
     clock = Clock(params.time_budget_s)
     error0 = state.error()
-    cur = int(params.start_pin) % board.pin_count
-    seq = [cur]
-    stop = "no improving line"
+    seq = [int(params.start_pin) % board.pin_count]
     cancelled = False
-    bridges = 0
-    max_bridges = max(10, board.max_lines // 20)
+    changes = 0
+    regrown = 0
     # A line must buy a real improvement; chords lying in the zero-weight rim score exactly 0.
     eps = 1e-4 * float(state.W.mean()) * state.size
-    try:
-        for step in range(board.max_lines):
+    bridges = [0]
+    max_bridges = max(10, board.max_lines // 20)
+
+    def walk(phase: str) -> str:
+        """Extend seq greedily from its last pin until nothing helps, the line budget or the clock."""
+        cur = seq[-1]
+        step = 0
+        while len(seq) - 1 < board.max_lines:
             js = board.valid_targets(cur)
             g = state.gains(cur, js)
             best = int(np.argmax(g))
             if g[best] <= eps:
                 # Nothing good leaves this pin. Look one line ahead: take the least harmful
                 # exit when the pair of lines still lowers the error overall.
-                if bridges >= max_bridges:
-                    stop = "stuck at pin"
-                    break
+                if bridges[0] >= max_bridges:
+                    return "stuck at pin"
                 nxt = _bridge(state, cur, js, g, eps)
                 if nxt < 0:
-                    break
-                bridges += 1
+                    return "no improving line"
+                bridges[0] += 1
             else:
                 nxt = int(js[best])
             state.add_line(cur, nxt)
             seq.append(nxt)
             cur = nxt
+            step += 1
             if progress and (step % PREVIEW_EVERY == 0):
-                progress({"phase": "greedy", "lines": len(seq) - 1, "max_lines": board.max_lines,
+                progress({"phase": phase, "lines": len(seq) - 1, "max_lines": board.max_lines,
                           "elapsed_s": clock.elapsed(), "preview": state.preview()})
             if step % 16 == 0:
                 state.check_cancel()
                 if clock.expired():
-                    stop = "time budget"
-                    break
-        else:
-            stop = "max lines"
-        changes = 0
+                    return "time budget"
+        return "max lines"
+
+    try:
+        stop = walk("greedy")
         if params.refine_seconds > 0 and len(seq) > 3 and not clock.expired():
             changes = refine(state, seq, min(params.refine_seconds, params.time_budget_s - clock.elapsed()),
                              params.seed, progress)
+            # Refinement frees error the walk could not reach before; let it grow again.
+            if len(seq) - 1 < board.max_lines and not clock.expired() and stop != "stuck at pin":
+                before = len(seq)
+                stop = walk("regrow")
+                regrown = len(seq) - before
     except Cancelled:
         cancelled = True
         stop = "cancelled"
@@ -63,7 +72,7 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
     return RunResult(
         sequence=seq, error=state.error(), error_initial=error0, line_count=len(seq) - 1,
         thread_length_mm=board.sequence_length_mm(seq), elapsed_s=clock.elapsed(), engine="a",
-        refined_changes=changes, stop_reason=stop, cancelled=cancelled,
+        refined_changes=changes, regrown_lines=regrown, stop_reason=stop, cancelled=cancelled,
     )
 
 
@@ -82,19 +91,32 @@ def _bridge(state: RenderState, cur: int, js: np.ndarray, g: np.ndarray, eps: fl
     return best_j
 
 
+def _worst_first(state: RenderState, seq: list[int]) -> list[int]:
+    """Middle indices ordered by how much the error would drop if the two lines meeting there
+    were removed: the lines doing the most harm get the first chance at a better pin."""
+    I = np.array(seq[:-1], dtype=np.int32)
+    J = np.array(seq[1:], dtype=np.int32)
+    g = state.pair_gains(I, J, removal=True)
+    score = g[:-1] + g[1:]            # score[i - 1] belongs to middle index i
+    return [int(i) + 1 for i in np.argsort(-score)]
+
+
 def refine(state: RenderState, seq: list[int], budget_s: float, seed: int,
            progress: ProgressFn | None = None) -> int:
-    """Walk the sequence in random order; at each middle pin try a better replacement, and drop
-    a back-and-forth pair (p1 -> p2 -> p1) when the two lines hurt. Keeps every change that lowers
-    the error. Returns the number of accepted changes."""
+    """Visit the sequence's middle pins, worst lines first and then in random order; at each one
+    try a better replacement pin, and drop a back-and-forth pair (p1 -> p2 -> p1) when the two
+    lines hurt. Keeps every change that lowers the error. Returns the number of accepted changes."""
     board = state.board
     clock = Clock(budget_s)
     rng = random.Random(seed)
     changes = 0
     passes = 0
     while not clock.expired() and len(seq) > 3:
-        order = list(range(1, len(seq) - 1))
-        rng.shuffle(order)
+        if passes == 0:
+            order = _worst_first(state, seq)
+        else:
+            order = list(range(1, len(seq) - 1))
+            rng.shuffle(order)
         improved_this_pass = 0
         for i in order:
             if i >= len(seq) - 1:

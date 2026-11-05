@@ -19,8 +19,10 @@ template and laser or CNC files, then string the piece from your phone with huge
   thread and board colour, inverted (light thread on a dark board), minimum pin skip, maximum lines,
   viewing distance, sector labels. Save any configuration as a preset.
 - Two engines that optimise the same thing: make a thread-accurate simulation look like the target
-  from a normal viewing distance. Lines are scored by the error they remove, so threads that cross
-  areas meant to stay light are penalised instead of rewarded. Engine A is a greedy walk with
+  from a normal viewing distance. The simulation adds light linearly and compares lightness the way
+  the eye does, so mid-tones get the thread they really need and the on-screen render looks like the
+  finished piece. Lines are scored by the error they remove, so threads that cross areas meant to
+  stay light are penalised instead of rewarded. Engine A is a greedy walk with
   refinement passes; engine B builds the best set of chords first and repairs it into one continuous
   thread, reporting what the repair cost.
 - Generation runs on the server as a cancellable background job with a live render; every run is kept

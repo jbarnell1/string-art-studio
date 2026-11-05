@@ -27,7 +27,8 @@ stringart/
   voice.py        Piper over HTTP with the on-disk clip cache and prewarm jobs; pin_phrase is the one phrase template.
   raster.py       Vectorised line sampling and the anti-aliased renderer's line.
   engine/state.py The shared objective (RenderState): target, weights, coverage, gradient image G.
-  engine/greedy.py   Engine A: greedy with error scoring, two-line bridge, refinement passes, regrow.
+  engine/greedy.py   Engine A: greedy with error scoring, two-line bridge, local search, regrow.
+  engine/polish.py   Local search: one gain matrix prices replace/insert/delete/unfold moves, each verified exactly.
   engine/setcover.py Engine B: chord multiset, prune, parity repair, Euler path.
   engine/render.py   Final thread-accurate render and the comparison image.
   exports/        Pin template PDF, SVG/DXF fab files, sequence TXT/CSV/JSON, project bundle ZIP.

@@ -32,30 +32,34 @@ build progress are files and SQLite rows under one data folder.
 
 ## The objective both engines share
 
-The target `T` is the prepared grayscale turned into wanted thread coverage (darkness on a light
-board, lightness on a dark one). The simulated coverage `C` saturates: a pixel crossed by `n` passes
-of per-pass coverage `a` has `C = 1 - (1 - a)^n`, where `a = thread_width / pixel_size * opacity`
-(times sqrt(2) on diagonals). Both are blurred with a Gaussian sized from the viewing distance and
-compared with importance weights `W`:
+Light adds linearly and the eye sees it nonlinearly (ADR-014). The simulated coverage `C`
+saturates: a pixel crossed by `n` passes of per-pass coverage `a` has `C = 1 - (1 - a)^n`, where
+`a = thread_width / pixel_size * opacity` (times sqrt(2) on diagonals). Its luminance is
+`y = Y_board + (Y_thread - Y_board) C` from the two colours; after the viewing-distance blur it is
+seen with lightness `p = enc(blur(y))`, `enc(y) = y^(1/2.2)`. The prepared grayscale is already
+lightness, so the target is `P_T = enc(blur(dec(gray)))`, and with importance weights `W`:
 
 ```
-E = sum W * (blur(T) - blur(C))^2
+E = sum W * (P_T - p)^2
 ```
 
-Adding a line with per-pixel deltas `d` changes `E` by `sum W blur(d)^2 - 2 sum d * G` with
-`G = blur(W * (blur(T) - blur(C)))`, because the Gaussian is self-adjoint. `G` is kept current after
-every line with blurs on a crop around it, so scoring a candidate is one gather along its pixels.
-The light-protection factor scales the negative residual inside `G` (ADR-006). Reported error is
-the symmetric weighted RMS in [0, 1].
+Adding a line with per-pixel deltas `d` changes `E` by about `-2 sum d * G + sum K d^2` with
+`G = blur(W * R * slope)`, where `R` is the signed lightness residual and `slope = d p / d C` at the
+current blurred coverage (the Gaussian is self-adjoint, so the blur moves onto the weights).
+`G` and `K` are kept current after every line on a band around it (ADR-016), so scoring a
+candidate is two gathers along its pixels. The light-protection factor scales the overshoot side of
+`R` (ADR-006; 1.0, strict, is the default since ADR-014). Reported error is the symmetric weighted
+RMS of lightness in [0, 1]. The v1 objective (`objective: "coverage"`) is kept for comparison.
 
 ## Engines
 
 Engine A (`greedy.py`): from the current pin score every allowed next pin, take the best, repeat.
 When nothing from the current pin helps, look one line ahead and take the pair if it still lowers
-the error (a bridge, capped at 5% of the line budget). Then refinement passes within a time budget:
-replace a middle pin with the best alternative (worst lines first, then random order), drop
-back-and-forth pairs that hurt. Then the walk continues from the last pin, because refinement frees
-error it could not reach before (ADR-012).
+the error (a bridge, capped at 5% of the line budget). Then local search (`polish.py`, ADR-015):
+one gain matrix for every chord prices replace, insert, delete and unfold moves at every position,
+the best non-overlapping ones are verified exactly and kept when they lower the error, and the walk
+continues from the last pin; the two alternate until nothing changes or the search budget is spent.
+`local_search: "refine"` selects the v2 position walk, `"none"` skips it.
 
 Weights `W` (`prep.board_weight`): one inside the board, fading to zero in the band at the pins
 (ADR-005), times the painted mask, times the automatic face map from `faces.py` (YuNet, ADR-011),

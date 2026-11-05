@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from stringart.board import BoardConfig  # noqa: E402
 from stringart.engine.greedy import run_greedy  # noqa: E402
 from stringart.engine.render import comparison_image, coverage_image, encode_png, render_rgb  # noqa: E402
+from stringart.engine.state import dec, enc  # noqa: E402
 from stringart.engine.setcover import run_setcover  # noqa: E402
 from stringart.engine.state import EngineParams, RenderState  # noqa: E402
 from stringart.faces import auto_importance, detect_faces  # noqa: E402
@@ -47,16 +48,25 @@ def synthetic_target(res: int) -> np.ndarray:
     return np.clip(img, 0, 1)
 
 
-def region_error(gray: np.ndarray, board: BoardConfig, seq: list[int], region: np.ndarray, sigma_px: float) -> float:
-    """RMS of the blurred difference between target darkness and rendered coverage inside region."""
+def region_error(gray: np.ndarray, board: BoardConfig, seq: list[int], region: np.ndarray, sigma_px: float,
+                 state: RenderState | None = None) -> tuple[float, float]:
+    """Two RMS errors inside region after the blur: the v1 coverage error (target darkness 1 - gray
+    against coverage) and the lightness error (encoded linear light, what a viewer sees)."""
     res = gray.shape[0]
     cov = coverage_image(board, seq, res)
     t = 1.0 - gray
+    lin_t = dec(gray)
+    yb, yt = (state.y_board, state.y_thread) if state is not None else (0.90, 0.007)
+    lin_c = yb + (yt - yb) * cov
     if sigma_px > 0:
         cov = cv2.GaussianBlur(cov, (0, 0), sigma_px)
         t = cv2.GaussianBlur(t, (0, 0), sigma_px)
+        lin_t = cv2.GaussianBlur(lin_t, (0, 0), sigma_px)
+        lin_c = cv2.GaussianBlur(lin_c, (0, 0), sigma_px)
     d = (t - cov) ** 2
-    return float(math.sqrt(float((d * region).sum()) / max(float(region.sum()), 1.0)))
+    dl = (enc(lin_t) - enc(lin_c)) ** 2
+    n = max(float(region.sum()), 1.0)
+    return float(math.sqrt(float((d * region).sum()) / n)), float(math.sqrt(float((dl * region).sum()) / n))
 
 
 def main() -> None:
@@ -77,6 +87,9 @@ def main() -> None:
     ap.add_argument("--clahe", type=float, default=0.0)
     ap.add_argument("--edge", type=float, default=0.0)
     ap.add_argument("--white", type=float, default=0.92)
+    ap.add_argument("--lookahead", type=int, default=1)
+    ap.add_argument("--search", default="polish", help="polish, refine or none")
+    ap.add_argument("--objective", default="linear", help="linear or coverage")
     ap.add_argument("--black", type=float, default=0.05)
     args = ap.parse_args()
 
@@ -104,12 +117,12 @@ def main() -> None:
         face_region = auto_importance(faces, prep, w, h, args.res, 1.0)
     else:
         gray = synthetic_target(args.res)
-    target = 1.0 - gray
     weight = board_weight(board, args.res, auto_importance=auto, gray=gray, structure_weight=args.structure)
-    state = RenderState(target, weight, board, light_protection=args.protect)
+    state = RenderState(gray, weight, board, light_protection=args.protect, objective=args.objective)
     print(f"res={args.res} a={state.a:.3f} sigma={state.sigma:.2f}px k={state.k:.3f} faces={len(faces)} "
           f"weight mean={weight.mean():.3f} max={weight.max():.2f}")
-    params = EngineParams(engine=args.engine, refine_seconds=args.refine, time_budget_s=900)
+    params = EngineParams(engine=args.engine, refine_seconds=args.refine, time_budget_s=900,
+                          lookahead=args.lookahead, local_search=args.search, objective=args.objective)
     t0 = time.perf_counter()
     last = {"t": t0}
 
@@ -124,14 +137,16 @@ def main() -> None:
     print(f"engine={result.engine} lines={result.line_count} error {result.error_initial:.4f} -> {result.error:.4f} "
           f"thread={result.thread_length_mm / 1000:.0f} m time={dt:.1f}s stop={result.stop_reason} "
           f"repair={result.repair_lines}/{result.repair_error:+.4f} refined={result.refined_changes} "
-          f"regrown={result.regrown_lines}")
+          f"regrown={result.regrown_lines} rounds={result.polish_rounds}")
     # Plain (unweighted) errors so runs with different weights stay comparable.
     board_region = (board_weight(board, args.res) > 0.999).astype(np.float32)
-    line = f"plain error: board={region_error(gray, board, result.sequence, board_region, state.sigma):.4f}"
+    cb, lb = region_error(gray, board, result.sequence, board_region, state.sigma, state)
+    line = f"plain error: board cov={cb:.4f} light={lb:.4f}"
     if face_region is not None:
         face_mask = (face_region > 0.55).astype(np.float32)
-        line += (f" face={region_error(gray, board, result.sequence, face_mask, state.sigma):.4f}"
-                 f" face-sharp={region_error(gray, board, result.sequence, face_mask, 0):.4f}")
+        cf, lf = region_error(gray, board, result.sequence, face_mask, state.sigma, state)
+        _, lfs = region_error(gray, board, result.sequence, face_mask, 0, state)
+        line += f" | face cov={cf:.4f} light={lf:.4f} light-sharp={lfs:.4f}"
     print(line)
     if args.out:
         rgb_out = render_rgb(board, result.sequence, 1200)

@@ -43,13 +43,13 @@ def main(argv: list[str] | None = None) -> int:
     from stringart.engine.render import encode_png, render_rgb
     from stringart.engine.setcover import run_setcover
     from stringart.engine.state import EngineParams, RenderState
-    from stringart.prep import PrepSettings, board_weight, load_source, prepare_target, target_darkness
+    from stringart.prep import PrepSettings, board_weight, load_source, prepare_target
 
     board = BoardConfig(pin_count=args.pins, max_lines=args.lines, diameter_mm=args.diameter, work_res=args.res)
     prep = PrepSettings(gamma=args.gamma, black_point=0.04, white_point=0.92)
     rgb = load_source(Path(args.image).read_bytes())
     gray = prepare_target(rgb, prep, board, args.res)
-    state = RenderState(target_darkness(gray, board), board_weight(board, args.res), board, light_protection=args.protect)
+    state = RenderState(gray, board_weight(board, args.res, gray=gray, structure_weight=0.5), board, light_protection=args.protect)
     params = EngineParams(engine=args.engine, time_budget_s=600)
     t0 = time.time()
 

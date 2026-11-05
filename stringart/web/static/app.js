@@ -217,7 +217,7 @@
   const PREP_FIELDS = [
     { group: "tone", key: "brightness", label: "Brightness", min: -1, max: 1, step: 0.01 },
     { group: "tone", key: "contrast", label: "Contrast", min: -1, max: 1, step: 0.01 },
-    { group: "tone", key: "gamma", label: "Gamma", min: 0.3, max: 3, step: 0.01, help: "Below 1 darkens mid-tones. Portraits usually want 0.7 to 0.85 so skin gets thread." },
+    { group: "tone", key: "gamma", label: "Gamma", min: 0.3, max: 3, step: 0.01, help: "Below 1 darkens mid-tones. Since v3 the engine gives mid-tones the thread they really need, so 1.0 is the faithful setting; lower it only for a moodier piece." },
     { group: "levels", key: "black_point", label: "Black point", min: 0, max: 0.95, step: 0.01, help: "Everything darker than this becomes true black." },
     { group: "levels", key: "white_point", label: "White point", min: 0.05, max: 1, step: 0.01, help: "Everything lighter than this becomes true white, so the thread leaves it alone." },
     { group: "detail", key: "clahe_clip", label: "Local contrast", min: 0, max: 4, step: 0.1, help: "0 is off. Pulls out facial detail without blowing out the whole image." },
@@ -228,10 +228,10 @@
     { group: "mix", key: "mix_b", label: "Blue weight", min: 0, max: 1, step: 0.01 },
   ];
   const PREP_PRESETS = {
-    "Portrait": { gamma: 0.78, black_point: 0.04, white_point: 0.9, clahe_clip: 0.6, edge_strength: 0.3, contrast: 0.1, face_emphasis: 1.0, structure_weight: 0.5 },
-    "High key": { gamma: 0.7, black_point: 0.02, white_point: 0.8, clahe_clip: 0.5, edge_strength: 0.5, face_emphasis: 1.0, structure_weight: 0.4 },
+    "Portrait": { gamma: 1.0, black_point: 0.03, white_point: 0.9, clahe_clip: 0.6, edge_strength: 0.3, contrast: 0.05, face_emphasis: 1.0, structure_weight: 0.5 },
+    "High key": { gamma: 0.9, black_point: 0.02, white_point: 0.8, clahe_clip: 0.5, edge_strength: 0.5, face_emphasis: 1.0, structure_weight: 0.4 },
     "Soft": { gamma: 1.0, black_point: 0.0, white_point: 1.0, clahe_clip: 0, edge_strength: 0, contrast: 0, face_emphasis: 0.5, structure_weight: 0 },
-    "Pet": { gamma: 0.85, black_point: 0.05, white_point: 0.92, clahe_clip: 1.2, edge_strength: 0.6, edge_radius: 1.5, face_emphasis: 0, structure_weight: 0.7 },
+    "Pet": { gamma: 1.0, black_point: 0.04, white_point: 0.92, clahe_clip: 1.2, edge_strength: 0.6, edge_radius: 1.5, face_emphasis: 0, structure_weight: 0.7 },
   };
 
   async function viewStudio(pid) {
@@ -665,7 +665,7 @@
     } }, "Delete preset");
     const engineBody = el("div", {}, [
       el("div", { class: "field" }, [el("label", {}, "Engine"), engineSeg, el("div", { class: "help" }, "A is the proven greedy walk with refinement. B builds the best set of chords first, then repairs it into one continuous thread. Run both to compare them side by side.")]),
-      rangeField(engine, { key: "light_protection", label: "Light area protection", min: 0.05, max: 1, step: 0.05, reset: 0.5, help: "1 treats a thread crossing a white area as bad as a missing thread in a dark area. Lower values allow more wash and darker faces.", format: (v) => fmt.fixed(v, 2) }, save),
+      rangeField(engine, { key: "light_protection", label: "Light area protection", min: 0.05, max: 1, step: 0.05, reset: 1, help: "1 is the honest objective: a thread crossing a white area costs as much as a missing thread in a dark area. Since the engine models light properly (v3) it is also the best setting; lower values trade a cleaner background for a darker, hazier picture.", format: (v) => fmt.fixed(v, 2) }, save),
       el("div", { class: "row2" }, [
         numberField(engine, "refine_seconds", "Refinement budget (A)", { min: 0, max: 600, step: 5, unit: "seconds" }, save),
         numberField(engine, "time_budget_s", "Time limit", { min: 5, max: 3600, step: 10, unit: "seconds" }, save),

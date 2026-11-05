@@ -4,6 +4,51 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-016 - Per-line work is a band, not a frame; fans are cached per pin
+**2026-11-05.** Profiling the v2 engine: scoring the 210 candidate lines from a pin took 5.8 ms
+(1.9 ms sampling the pixels, 3.2 ms gathering three images and forming d), and adding a long line
+took 7.7 ms because the gradient image was recomputed on the line's whole bounding box, nearly the
+full frame for a diagonal, with two power functions per pixel. Now: the blur pad matches OpenCV's
+real kernel radius (4 sigma, not 6), a line's update runs in tiles of about five pads along the
+line so only the band around it is blurred and re-derived, lookup tables replace the powers,
+every image lives in a flat buffer with a spare zero so padded sample slots gather nothing and
+masks disappear, two per-pixel products (H1 = (1 - C) G, H2 = K (1 - C)^2) make an add-score two
+gathers, and the sampled fan of each pin is cached on first use (about 190 MB at 800 px and 240
+pins; skipped above 1100 px). Result: scoring 1.3 ms, a long line 1.7 ms, a plan of 4,000 lines in
+about half the time. ADR-007 said no line cache because a cache of every chord's pixels was 260 MB
+and bought a millisecond; per-pin fans are smaller and buy most of a step, so it is reversed for
+work resolutions up to 1100 px.
+
+### ADR-015 - Local search prices every move from one gain matrix, then verifies exactly
+**2026-11-05.** The v2 refinement walked the sequence and spent four line operations at every
+position whether or not anything could improve there. `engine/polish.py` instead computes the add
+gain of every allowed chord once per round (about 0.3 s), prices four moves at every position
+from it (replace the middle pin, insert a pin, delete a pin, unfold a back-and-forth pair), picks
+the best non-overlapping ones and verifies each exactly in the state it lands in, keeping only
+real improvements; then the greedy walk continues from the end and the two alternate until
+nothing changes. Honest result: on the v2 objective it converged to the same error as the old
+refinement (0.1665 against 0.1663) and lookahead in the walk bought nothing either, which is what
+told us the objective, not the optimiser, was the limit (ADR-014). It stays because it converges in
+a fraction of the time, uses fewer lines for the same error, and its insert and delete moves are
+what let the line count settle itself under the new objective.
+
+### ADR-014 - Light adds linearly; the error is measured in lightness
+**2026-11-05.** The v1 and v2 objective compared the photo's grey value, which is an encoded
+lightness, with thread coverage, which is a linear quantity: a 50% grey asked for 50% coverage,
+but half-covered white board reflects half the light and looks like 73% grey. Every mid-tone was
+asked for about half the thread it needed, faces came out washed, and the gamma and
+light-protection knobs were compensating for the wrong model. The engine now simulates light:
+luminance y = Y_board + (Y_thread - Y_board) C from the board and thread colours, blurred for the
+viewing distance, then encoded (exponent 1/2.2, close to CIE L*) and compared with the photo's
+lightness; the gradient carries the encoding slope, so dark regions count as the eye counts them.
+Renders and comparison images blend in linear light and encode for the screen, so they look like
+the real piece will. Bench on the man sample, same tone settings, measured for both on the new
+lightness yardstick: board error 0.187 (old) against 0.159 (new), face 0.236 against 0.204, and
+the plan uses its full 4,000 lines instead of stopping near 2,700. Under the honest model the
+strict light protection (1.0) is best (0.75: 0.163; 0.5: 0.174) and gamma 1.0 beats the old 0.78
+darkening, so both defaults change. More than 4,000 lines buys weighted gains only and adds
+background haze, so the budget stays. Objective "coverage" remains selectable for comparison.
+
 ### ADR-013 - Piper runs as its own container; Studio caches every clip on disk
 **2026-11-05.** Build mode's voice in v2 is Piper (piper1-gpl) behind its small HTTP server
 (`POST /synthesize`, `GET /voices`) in a second container, `deploy/piper/Dockerfile`, with three

@@ -27,7 +27,7 @@ from stringart.engine.setcover import run_setcover
 from stringart.engine.state import EngineParams, RenderState
 from stringart.faces import auto_importance, detect_faces, portrait_frame
 from stringart.prep import (PrepSettings, board_weight, decode_mask_png, load_source, prepare_target,
-                            remove_background, target_darkness)
+                            remove_background)
 
 log = logging.getLogger("stringart.jobs")
 
@@ -234,9 +234,9 @@ class JobManager:
             params.engine = run["engine"]
             res = board.work_res
             gray = self.build_target(project_id, prep, board, res)
-            target = target_darkness(gray, board)
             weight = self.build_weight(project_id, prep, board, res, gray=gray)
-            state = RenderState(target, weight, board, light_protection=params.light_protection)
+            state = RenderState(gray, weight, board, light_protection=params.light_protection,
+                                objective=params.objective)
             state.cancel_check = prog.cancel.is_set
             # The target as the optimiser saw it, for the compare view.
             (out / "target.jpg").write_bytes(encode_jpeg((np.clip(gray, 0, 1) * 255).astype(np.uint8)))
@@ -278,6 +278,7 @@ class JobManager:
                 "work_res": res,
                 "sigma_px": state.sigma,
                 "coverage_per_pass": state.a,
+                "objective": state.objective,
             })
             self.db.set_run_status(run_id, "done", metrics=metrics)
             prog.publish({"phase": "done", "status": "done", "lines": result.line_count, "metrics": metrics,

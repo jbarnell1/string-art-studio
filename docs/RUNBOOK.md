@@ -97,11 +97,12 @@ can also travel as a bundle ZIP from the results page.
 
 1. Press "Frame the face" in the Subject panel, or crop so the face fills the circle.
 2. Pick the Portrait tone preset. Lower the white point until the backdrop goes white (0.8 for a grey
-   studio backdrop), keep gamma 0.75 to 0.8.
+   studio backdrop) and leave gamma at 1.0: since v3 the engine models light properly, so the
+   faithful target is the best target.
 3. Press "Show importance" on the preview: faces and edges should be red. Paint the mask for anything
    else that matters (a ring, a logo on a shirt).
-4. Generate engine A. Expect 2,200 to 3,000 lines; the "regrown" number in the metrics table shows the
-   lines added after refinement.
+4. Generate engine A. Expect it to use the whole 4,000-line budget on a portrait; the "regrown"
+   number in the metrics table shows the lines added after the local search.
 
 ## Calibration after the pilot build
 
@@ -109,5 +110,6 @@ can also travel as a bundle ZIP from the results page.
 2. String the piece and photograph it from the viewing distance beside the simulated render.
 3. If the real piece is darker than the render, lower `thread_opacity`; lighter, raise it. Re-run the
    same project (every run is kept) until the simulation matches, then save the board as a preset.
-4. If light areas are too washed, raise light-area protection; if faces are too faint, lower it or
-   lower gamma in the Tone panel.
+4. If the real piece is lighter or darker than the render overall, `thread_opacity` is the knob;
+   if only the mid-tones differ, gamma in the Tone panel. Light-area protection stays at 1.0 unless
+   you want a moodier, hazier piece.

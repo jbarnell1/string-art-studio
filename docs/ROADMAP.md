@@ -43,7 +43,16 @@ Not done in v2:
 - Colour-change pauses (they belong with colour, v3).
 - A separate clicker settings page; the mapping lives in the build-mode bar.
 
-## v3, colour
+## v3 part one, the engine (built 2026-11-05)
+
+Done:
+- Linear-light objective with the error in lightness (ADR-014): mid-tones get the thread they
+  need, renders look like the real piece, strict light protection and gamma 1.0 become defaults.
+- Matrix local search with replace, insert, delete and unfold moves (ADR-015).
+- Engine about twice as fast per line: banded updates, lookup tables, cached fans (ADR-016).
+- Bench (man sample, lightness error, board / face): v2 engine 0.187 / 0.236, v3 0.157 / 0.195, in half the time.
+
+## v3 part two, colour
 
 Palette presets (CMY plus black), custom palettes, auto palette by k-means always including black;
 one coverage layer per colour composited in build order; CIELAB error after the blur; one continuous

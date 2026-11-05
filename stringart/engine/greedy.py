@@ -5,6 +5,7 @@ import random
 
 import numpy as np
 
+from stringart.engine.polish import polish
 from stringart.engine.state import Cancelled, Clock, EngineParams, ProgressFn, RenderState, RunResult
 
 PREVIEW_EVERY = 40
@@ -18,6 +19,7 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
     cancelled = False
     changes = 0
     regrown = 0
+    rounds = 0
     # A line must buy a real improvement; chords lying in the zero-weight rim score exactly 0.
     eps = 1e-4 * float(state.W.mean()) * state.size
     bridges = [0]
@@ -31,6 +33,8 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
             js = board.valid_targets(cur)
             g = state.gains(cur, js)
             best = int(np.argmax(g))
+            if params.lookahead > 1 and g[best] > eps:
+                best = _lookahead(state, js, g, params.lookahead)
             if g[best] <= eps:
                 # Nothing good leaves this pin. Look one line ahead: take the least harmful
                 # exit when the pair of lines still lowers the error overall.
@@ -57,14 +61,30 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
 
     try:
         stop = walk("greedy")
-        if params.refine_seconds > 0 and len(seq) > 3 and not clock.expired():
-            changes = refine(state, seq, min(params.refine_seconds, params.time_budget_s - clock.elapsed()),
-                             params.seed, progress)
-            # Refinement frees error the walk could not reach before; let it grow again.
-            if len(seq) - 1 < board.max_lines and not clock.expired() and stop != "stuck at pin":
-                before = len(seq)
-                stop = walk("regrow")
-                regrown = len(seq) - before
+        if params.refine_seconds > 0 and len(seq) > 3 and not clock.expired() and params.local_search != "none":
+            search = Clock(min(params.refine_seconds, params.time_budget_s - clock.elapsed()))
+            if params.local_search == "refine":
+                changes = refine(state, seq, search.budget, params.seed, progress)
+                if len(seq) - 1 < board.max_lines and not clock.expired() and stop != "stuck at pin":
+                    before = len(seq)
+                    stop = walk("regrow")
+                    regrown = len(seq) - before
+            else:
+                # Alternate: local search over the whole path, then grow again from the end,
+                # until neither changes anything or the search budget is spent.
+                while not search.expired() and not clock.expired():
+                    totals = polish(state, seq, search.budget - search.elapsed(), eps, progress)
+                    rounds += totals["rounds"]
+                    applied = totals["replace"] + totals["insert"] + totals["delete"] + totals["unfold"]
+                    changes += applied
+                    grown = 0
+                    if len(seq) - 1 < board.max_lines and stop != "stuck at pin" and not clock.expired():
+                        before = len(seq)
+                        stop = walk("regrow")
+                        grown = len(seq) - before
+                        regrown += grown
+                    if applied == 0 and grown == 0:
+                        break
     except Cancelled:
         cancelled = True
         stop = "cancelled"
@@ -72,8 +92,22 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
     return RunResult(
         sequence=seq, error=state.error(), error_initial=error0, line_count=len(seq) - 1,
         thread_length_mm=board.sequence_length_mm(seq), elapsed_s=clock.elapsed(), engine="a",
-        refined_changes=changes, regrown_lines=regrown, stop_reason=stop, cancelled=cancelled,
+        refined_changes=changes, regrown_lines=regrown, polish_rounds=rounds, stop_reason=stop, cancelled=cancelled,
     )
+
+
+def _lookahead(state: RenderState, js: np.ndarray, g: np.ndarray, k: int) -> int:
+    """Among the k best next lines, pick the one whose best follow-up line adds the most."""
+    board = state.board
+    order = np.argsort(-g)[:k]
+    best_k, best_total = int(order[0]), -np.inf
+    for idx in order:
+        j = int(js[idx])
+        g2 = state.gains(j, board.valid_targets(j))
+        total = float(g[idx]) + max(float(g2.max()), 0.0)
+        if total > best_total:
+            best_total, best_k = total, int(idx)
+    return best_k
 
 
 def _bridge(state: RenderState, cur: int, js: np.ndarray, g: np.ndarray, eps: float) -> int:

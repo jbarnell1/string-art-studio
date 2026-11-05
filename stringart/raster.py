@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import numpy as np
 
+# Padded sample slots carry this index: one past the last pixel, where the engine's flat buffers
+# keep a spare zero, so gathers need no mask. Callers that want real pixels use the mask.
+PAD_INDEX = -1
+
 
 def sample_lines(p0: np.ndarray, p1: np.ndarray, size: int) -> tuple[np.ndarray, np.ndarray]:
     """Nearest-pixel samples along many lines.
 
     p0: (2,) or (m, 2) start points in pixel coordinates (x, y); p1: (m, 2) end points.
-    Returns flat pixel indices (m, L) and a boolean mask (m, L); masked-out slots are padding.
-    Each line gets max(|dx|, |dy|) + 1 samples, so a line visits each pixel once.
+    Returns flat pixel indices (m, L) and a boolean mask (m, L); masked-out slots are padding
+    and hold the index size * size (see PAD_INDEX). Each line gets max(|dx|, |dy|) + 1 samples,
+    so a line visits each pixel once.
     """
     p1 = np.asarray(p1, dtype=np.float32)
     p0 = np.broadcast_to(np.asarray(p0, dtype=np.float32), p1.shape)
@@ -24,7 +29,9 @@ def sample_lines(p0: np.ndarray, p1: np.ndarray, size: int) -> tuple[np.ndarray,
     ys = p0[:, 1:2] + t * d[:, 1:2]
     xi = np.clip(np.rint(xs).astype(np.int32), 0, size - 1)
     yi = np.clip(np.rint(ys).astype(np.int32), 0, size - 1)
-    return yi * size + xi, mask
+    idx = yi * size + xi
+    idx[~mask] = size * size
+    return idx, mask
 
 
 def step_factor(p0: np.ndarray, p1: np.ndarray) -> np.ndarray:

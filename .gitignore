@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/
+.taste-skill/
+.claude/*.local.*
+*.log
+.DS_Store
+docs/brand/candidates/

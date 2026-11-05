@@ -1,0 +1,36 @@
+# String Art Studio, self-hosted.
+#
+#   docker compose up -d --build
+#   open http://127.0.0.1:8050
+#
+# Everything the app stores (photos, plans, exports, the SQLite database) lives in ./data, so back
+# that folder up. The port is bound to 127.0.0.1 on purpose: put Tailscale Serve, Caddy or nginx
+# in front for HTTPS and access control. When it sits under a path prefix that the proxy strips
+# (Tailscale: `tailscale serve --bg --set-path /stringart http://127.0.0.1:8050`), set
+# SAS_ROOT_PATH=/stringart so the app knows where it lives.
+#
+# Upgrade: git pull && docker compose up -d --build
+
+name: string-art-studio
+
+services:
+  studio:
+    build: .
+    image: ${SAS_IMAGE:-string-art-studio:local}
+    container_name: string-art-studio
+    restart: unless-stopped
+    ports:
+      - "${SAS_BIND:-127.0.0.1}:${SAS_PORT:-8050}:8050"
+    environment:
+      SAS_ROOT_PATH: ${SAS_ROOT_PATH:-}
+      SAS_WORKERS: ${SAS_WORKERS:-2}
+      SAS_RENDER_RES: ${SAS_RENDER_RES:-1600}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${SAS_DATA:-./data}:/data
+    # The engines are numpy bound; 2 workers x 2 OpenCV threads fits a 4 core box.
+    cpus: ${SAS_CPUS:-4}
+    mem_limit: ${SAS_MEM:-3g}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

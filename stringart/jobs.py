@@ -1,0 +1,269 @@
+"""Generation jobs: a small worker pool, per-run progress, previews on disk and cancellation.
+
+A job loads the project's image, builds the target and weights exactly as the editor previewed
+them, runs the chosen engine, then writes the sequence, the final render and the comparison image
+into the run's folder. Progress events fan out to any number of SSE listeners.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import queue
+import threading
+import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from stringart.board import BoardConfig, thread_estimate
+from stringart.config import Settings
+from stringart.db import Database
+from stringart.engine.greedy import run_greedy
+from stringart.engine.render import comparison_image, encode_jpeg, encode_png, render_rgb
+from stringart.engine.setcover import run_setcover
+from stringart.engine.state import EngineParams, RenderState
+from stringart.prep import (PrepSettings, board_weight, decode_mask_png, load_source, prepare_target,
+                            remove_background, target_darkness)
+
+log = logging.getLogger("stringart.jobs")
+
+
+class ProjectFiles:
+    """Where a project's files live on disk."""
+
+    def __init__(self, settings: Settings, project_id: str):
+        self.root = settings.projects_dir / project_id
+        self.runs = self.root / "runs"
+
+    def ensure(self) -> None:
+        self.runs.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def source(self) -> Path | None:
+        for ext in ("jpg", "jpeg", "png", "heic", "heif", "webp", "bmp", "tif", "tiff"):
+            p = self.root / f"source.{ext}"
+            if p.exists():
+                return p
+        return None
+
+    @property
+    def mask(self) -> Path:
+        return self.root / "mask.png"
+
+    @property
+    def subject_alpha(self) -> Path:
+        return self.root / "subject_alpha.npy"
+
+    def run_dir(self, run_id: str) -> Path:
+        d = self.runs / run_id
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+
+class ImageCache:
+    """Decoded source images, keyed by path and modification time."""
+
+    def __init__(self, capacity: int = 6):
+        self.capacity = capacity
+        self._items: dict[str, tuple[float, np.ndarray]] = {}
+        self._lock = threading.Lock()
+
+    def get(self, path: Path) -> np.ndarray:
+        key = str(path)
+        mtime = path.stat().st_mtime
+        with self._lock:
+            hit = self._items.get(key)
+            if hit and hit[0] == mtime:
+                return hit[1]
+        rgb = load_source(path.read_bytes())
+        with self._lock:
+            if len(self._items) >= self.capacity:
+                self._items.pop(next(iter(self._items)))
+            self._items[key] = (mtime, rgb)
+        return rgb
+
+
+class RunProgress:
+    def __init__(self) -> None:
+        self.state: dict[str, Any] = {"phase": "queued", "lines": 0, "elapsed_s": 0.0, "preview_version": 0}
+        self.listeners: list[queue.Queue] = []
+        self.cancel = threading.Event()
+        self.lock = threading.Lock()
+
+    def publish(self, event: dict[str, Any]) -> None:
+        with self.lock:
+            self.state.update(event)
+            snapshot = dict(self.state)
+            listeners = list(self.listeners)
+        for q in listeners:
+            try:
+                q.put_nowait(snapshot)
+            except queue.Full:
+                pass
+
+    def subscribe(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=64)
+        with self.lock:
+            self.listeners.append(q)
+            q.put_nowait(dict(self.state))
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        with self.lock:
+            if q in self.listeners:
+                self.listeners.remove(q)
+
+
+class JobManager:
+    def __init__(self, settings: Settings, db: Database):
+        self.settings = settings
+        self.db = db
+        self.pool = ThreadPoolExecutor(max_workers=settings.workers, thread_name_prefix="gen")
+        self.progress: dict[str, RunProgress] = {}
+        self.images = ImageCache()
+        self._lock = threading.Lock()
+        for run in db.stale_runs():  # the server restarted mid-run
+            db.set_run_status(run["id"], "failed", error_message="server restarted during the run")
+
+    def files(self, project_id: str) -> ProjectFiles:
+        return ProjectFiles(self.settings, project_id)
+
+    # Target building (shared with the live preview) -----------------------------------------
+
+    def subject_alpha(self, project_id: str, rgb: np.ndarray, compute: bool) -> np.ndarray | None:
+        files = self.files(project_id)
+        if files.subject_alpha.exists():
+            return np.load(files.subject_alpha)
+        if not compute:
+            return None
+        alpha = remove_background(rgb)
+        if alpha is not None:
+            np.save(files.subject_alpha, alpha.astype(np.float32))
+        return alpha
+
+    def build_target(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int) -> np.ndarray:
+        files = self.files(project_id)
+        src = files.source
+        if src is None:
+            raise FileNotFoundError("project has no image")
+        rgb = self.images.get(src)
+        alpha = self.subject_alpha(project_id, rgb, compute=prep.background_removal) if prep.background_removal else None
+        return prepare_target(rgb, prep, board, res, subject_alpha=alpha)
+
+    def build_weight(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int) -> np.ndarray:
+        files = self.files(project_id)
+        importance = None
+        if files.mask.exists():
+            try:
+                importance = decode_mask_png(files.mask.read_bytes())
+            except ValueError:
+                importance = None
+        return board_weight(board, res, importance, prep.mask_strength)
+
+    # Jobs ---------------------------------------------------------------------------------------
+
+    def submit(self, run: dict[str, Any]) -> None:
+        prog = RunProgress()
+        with self._lock:
+            self.progress[run["id"]] = prog
+        self.pool.submit(self._execute, run, prog)
+
+    def get_progress(self, run_id: str) -> RunProgress | None:
+        with self._lock:
+            return self.progress.get(run_id)
+
+    def cancel(self, run_id: str) -> bool:
+        prog = self.get_progress(run_id)
+        if prog is None:
+            return False
+        prog.cancel.set()
+        return True
+
+    def _execute(self, run: dict[str, Any], prog: RunProgress) -> None:
+        run_id = run["id"]
+        project_id = run["project_id"]
+        out = self.files(project_id).run_dir(run_id)
+        try:
+            if prog.cancel.is_set():
+                raise _CancelledEarly()
+            self.db.set_run_status(run_id, "running")
+            prog.publish({"phase": "preparing", "status": "running"})
+            prep = PrepSettings.from_dict(run["prep"])
+            board = BoardConfig.from_dict(run["board"])
+            params = EngineParams.from_dict(run["params"])
+            params.engine = run["engine"]
+            res = board.work_res
+            gray = self.build_target(project_id, prep, board, res)
+            target = target_darkness(gray, board)
+            weight = self.build_weight(project_id, prep, board, res)
+            state = RenderState(target, weight, board, light_protection=params.light_protection)
+            state.cancel_check = prog.cancel.is_set
+            # The target as the optimiser saw it, for the compare view.
+            (out / "target.jpg").write_bytes(encode_jpeg((np.clip(gray, 0, 1) * 255).astype(np.uint8)))
+            prog.publish({"phase": "generating", "status": "running"})
+            last_preview = [0.0]
+
+            def on_progress(ev: dict[str, Any]) -> None:
+                preview = ev.pop("preview", None)
+                now = time.time()
+                if preview is not None and now - last_preview[0] > 0.7:
+                    last_preview[0] = now
+                    tmp = out / "live.tmp"
+                    tmp.write_bytes(encode_jpeg(preview, quality=70))
+                    tmp.replace(out / "live.jpg")
+                    ev["preview_version"] = int(now * 1000)
+                ev.setdefault("status", "running")
+                prog.publish(ev)
+
+            result = run_greedy(state, params, on_progress) if params.engine == "a" else run_setcover(state, params, on_progress)
+            if result.cancelled:
+                self.db.set_run_status(run_id, "cancelled", metrics=result.to_dict())
+                prog.publish({"phase": "cancelled", "status": "cancelled"})
+                return
+            prog.publish({"phase": "rendering", "lines": result.line_count})
+            seq = [int(p) for p in result.sequence]
+            (out / "sequence.json").write_text(json.dumps(seq), encoding="utf-8")
+            render = render_rgb(board, seq, self.settings.render_res)
+            (out / "render.png").write_bytes(encode_png(render))
+            sigma_px = (board.viewing_distance_m * board.blur_mm_per_m) / board.pixel_mm(self.settings.render_res)
+            cmp_img = comparison_image(gray, render, blur_sigma_px=0.0)
+            (out / "compare.jpg").write_bytes(encode_jpeg(cmp_img, quality=85))
+            cmp_blur = comparison_image(gray, render, blur_sigma_px=sigma_px)
+            (out / "compare_blur.jpg").write_bytes(encode_jpeg(cmp_blur, quality=85))
+            estimate = thread_estimate(board, seq)
+            metrics = result.to_dict()
+            metrics.update({
+                "thread_with_margin_mm": estimate.with_margin_mm,
+                "spools_1000yd": estimate.spools,
+                "work_res": res,
+                "sigma_px": state.sigma,
+                "coverage_per_pass": state.a,
+            })
+            self.db.set_run_status(run_id, "done", metrics=metrics)
+            prog.publish({"phase": "done", "status": "done", "lines": result.line_count, "metrics": metrics,
+                          "preview_version": int(time.time() * 1000)})
+        except _CancelledEarly:
+            self.db.set_run_status(run_id, "cancelled")
+            prog.publish({"phase": "cancelled", "status": "cancelled"})
+        except Exception as err:  # noqa: BLE001
+            log.error("run %s failed: %s\n%s", run_id, err, traceback.format_exc())
+            self.db.set_run_status(run_id, "failed", error_message=str(err)[:500])
+            prog.publish({"phase": "failed", "status": "failed", "error": str(err)[:500]})
+        finally:
+            def _forget() -> None:
+                time.sleep(120)
+                with self._lock:
+                    self.progress.pop(run_id, None)
+            threading.Thread(target=_forget, daemon=True).start()
+
+    def shutdown(self) -> None:
+        for prog in list(self.progress.values()):
+            prog.cancel.set()
+        self.pool.shutdown(wait=False, cancel_futures=True)
+
+
+class _CancelledEarly(Exception):
+    pass

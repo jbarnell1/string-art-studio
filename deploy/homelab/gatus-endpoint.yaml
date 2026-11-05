@@ -1,0 +1,3 @@
+# Snippet for Gatus on the media PC (/mnt/c/homelab/monitoring/gatus.yaml), in the media PC list.
+# The container answers on loopback; the check uses the same *media anchor as its neighbours.
+  - { <<: *media, name: String Art Studio, url: "http://127.0.0.1:8050/healthz", conditions: ["[STATUS] == 200", "[BODY].ok == true"] }

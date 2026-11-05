@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "studio",
+      "runtimeExecutable": "C:/string-art-studio/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "stringart.web.app:factory", "--factory", "--host", "127.0.0.1", "--port", "8050", "--reload", "--reload-dir", "stringart"],
+      "port": 8050
+    }
+  ]
+}

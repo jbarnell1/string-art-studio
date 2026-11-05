@@ -1,0 +1,42 @@
+[project]
+name = "string-art-studio"
+version = "0.1.0"
+description = "Turn a photo into a pin-and-thread build plan: image editor, two generation engines, true-size templates, fab files and a phone build mode."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "numpy>=1.26",
+    "opencv-python-headless>=4.9",
+    "pillow>=10.3",
+    "pillow-heif>=0.16",
+    "reportlab>=4.1",
+]
+
+[project.optional-dependencies]
+bgremove = ["rembg>=2.0", "onnxruntime>=1.17"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
+
+[project.scripts]
+string-art-studio = "stringart.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["stringart*"]
+
+[tool.setuptools.package-data]
+stringart = ["web/static/**/*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

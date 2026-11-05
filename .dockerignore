@@ -1,0 +1,12 @@
+.venv
+data
+.git
+.pytest_cache
+.ruff_cache
+__pycache__
+.taste-skill
+docs/brand/candidates
+samples
+tests
+scripts
+.claude

@@ -1,6 +1,6 @@
 [project]
 name = "string-art-studio"
-version = "0.3.0"
+version = "0.3.1"
 description = "Turn a photo into a pin-and-thread build plan: image editor, two generation engines, true-size templates, fab files and a phone build mode."
 readme = "README.md"
 license = { text = "MIT" }
@@ -14,6 +14,7 @@ dependencies = [
     "pillow>=10.3",
     "pillow-heif>=0.16",
     "reportlab>=4.1",
+    "numba>=0.60",
 ]
 
 [project.optional-dependencies]

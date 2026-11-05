@@ -4,6 +4,23 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-018 - The two inner loops are Numba kernels, with numpy fallbacks
+**2026-11-05.** The owner asked whether the GPU could speed the engine up. Both machines have
+NVIDIA cards (the media PC a GTX 1060, the desktop an RTX 4070 SUPER) and CUDA reaches WSL2, but
+the greedy walk is strictly sequential and each step is a few small array operations, so a GPU
+port would be launch-latency bound, need a CUDA runtime in the image and the container toolkit
+in the homelab distro, and still leave the colour engine's per-tile maths as the bottleneck. The
+CPU route was taken first: `engine/kernels.py` holds two fused loops compiled by Numba on first
+use and cached (`NUMBA_CACHE_DIR` in the container): `score_add`, the gains of all candidate lines
+from the H1 and H2 products (1.3 ms to 0.14 ms for a fan of 210 lines), and `color_terms`, the
+whole per-pixel colour model on a crop (composite, Lab, Jacobian, one integrand and one
+second-order weight per layer; the colour line update went from 35 ms to 7 ms). Each has a plain
+numpy twin that runs when Numba is missing and that the kernels are checked against (equal to
+float precision). Result on this desktop: a four-colour plan of the colour sample in 55 s instead
+of 209 s with a lower error (0.230 against 0.250) because the local search gets many more rounds in
+its budget; a single-thread plan in 30 s instead of 37 s at the same error (0.154), since it is now bound by the tiled line update and the exact verification of local-search moves rather than by scoring. Numba threads are capped at two per worker in the container
+so two concurrent plans share the i3's four cores with OpenCV. Building the local search's gain matrix from the cached fans was tried and dropped: 240 separate calls were slower than one pass over all chord pairs.
+
 ### ADR-017 - Colour: one continuous thread per colour, layers composited in build order, CIELAB error
 **2026-11-05.** A colour plan is a list of layers, each a thread colour with its own pin sequence,
 laid lightest first and darkest last on a light board (the reverse on a dark one), because a dark

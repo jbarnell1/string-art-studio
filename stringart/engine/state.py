@@ -36,6 +36,7 @@ import cv2
 import numpy as np
 
 from stringart.board import BoardConfig
+from stringart.engine.kernels import score_add
 from stringart.engine.render import relative_luminance
 from stringart.raster import PAD_INDEX, bbox_of, sample_lines, step_factor
 
@@ -259,7 +260,7 @@ class RenderState:
         a = np.minimum(self.a * factor, 0.97)[:, None]
         if not removal:
             # d = a (1 - c): 2 sum d G - sum K d^2 = 2a sum H1 - a^2 sum H2, padded slots gather 0.
-            return (2.0 * a[:, 0] * self.H1f[idx].sum(axis=1) - a[:, 0] ** 2 * self.H2f[idx].sum(axis=1)).astype(np.float32)
+            return score_add(self.H1f, self.H2f, idx, a[:, 0])
         c = self.Cf[idx]
         d = np.minimum((1.0 - c) * (a / (1.0 - a)), c)
         g = self.Gf[idx]

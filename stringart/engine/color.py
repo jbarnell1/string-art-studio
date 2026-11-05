@@ -27,6 +27,7 @@ import cv2
 import numpy as np
 
 from stringart.board import BoardConfig
+from stringart.engine.kernels import color_terms, score_add
 from stringart.engine.polish import polish
 from stringart.engine.render import hex_to_rgb, srgb_to_linear
 from stringart.engine.state import Cancelled, Clock, EngineParams, ProgressFn, RunResult
@@ -191,24 +192,13 @@ class ColorState:
     def _gradient(self, Cb: np.ndarray, W: np.ndarray, lab_t: np.ndarray,
                   inner: tuple[slice, slice] | None = None) -> tuple[np.ndarray, np.ndarray]:
         """G (blurred, needs the whole crop) and K (pointwise, so only the `inner` part of the
-        crop when given) for every layer."""
-        y, below, above = self._composite(Cb)
-        lab, J = _lab_and_jacobian(y)
-        r = lab - lab_t                                          # (h, w, 3)
-        # d E / d y per pixel: J^T r, written as three multiply-adds over the rows of J.
-        JTr = J[..., 0, :] * r[..., 0, None] + J[..., 1, :] * r[..., 1, None] + J[..., 2, :] * r[..., 2, None]
-        sl = inner if inner is not None else (slice(None), slice(None))
-        G = np.empty((self.K,) + W.shape, dtype=np.float32)
-        Kk = np.empty((self.K,) + W[sl].shape, dtype=np.float32)
-        kW = self.k * W[sl]
-        Ji = J[sl]
+        crop when given) for every layer. The per-pixel model runs in one fused kernel."""
+        integrand, Kk = color_terms(Cb, W, lab_t, self.rho, self.rho_board, M_NORM, self.k)
+        G = np.empty_like(integrand)
         for k in range(self.K):
-            dydc = (self.rho[k] - below[k]) * above[k][..., None]    # (h, w, 3)
-            integrand = -(W * (JTr * dydc).sum(axis=-1))
-            G[k] = self._blur(integrand.astype(np.float32))
-            di = dydc[sl]
-            Jd = Ji[..., :, 0] * di[..., 0, None] + Ji[..., :, 1] * di[..., 1, None] + Ji[..., :, 2] * di[..., 2, None]
-            Kk[k] = kW * (Jd * Jd).sum(axis=-1)
+            G[k] = self._blur(integrand[k])
+        if inner is not None:
+            Kk = np.ascontiguousarray(Kk[:, inner[0], inner[1]])
         return G, Kk
 
     def _refresh_products(self, y0: int, y1: int, x0: int, x1: int) -> None:
@@ -260,7 +250,7 @@ class ColorState:
     def _score(self, layer: int, idx: np.ndarray, removal: bool, factor: np.ndarray) -> np.ndarray:
         a = np.minimum(self.a * factor, 0.97)
         if not removal:
-            return (2.0 * a * self.H1f[layer][idx].sum(axis=1) - a * a * self.H2f[layer][idx].sum(axis=1)).astype(np.float32)
+            return score_add(self.H1f[layer], self.H2f[layer], idx, a)
         c = self.Cf[layer][idx]
         aa = a[:, None]
         d = np.minimum((1.0 - c) * (aa / (1.0 - aa)), c)

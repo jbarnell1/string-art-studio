@@ -30,6 +30,7 @@ stringart/
   engine/greedy.py   Engine A: greedy with error scoring, two-line bridge, local search, regrow.
   engine/polish.py   Local search: one gain matrix prices replace/insert/delete/unfold moves, each verified exactly.
   engine/color.py    Colour: per-colour layers composited in build order, CIELAB error, palettes, greedy over (colour, line).
+  engine/kernels.py  Numba-compiled inner loops (fan scoring, colour per-pixel model) with numpy fallbacks; check both when touching them.
   engine/setcover.py Engine B: chord multiset, prune, parity repair, Euler path.
   engine/render.py   Final thread-accurate render and the comparison image.
   exports/        Pin template PDF, SVG/DXF fab files, sequence TXT/CSV/JSON, project bundle ZIP.
@@ -44,7 +45,8 @@ deploy/           Media PC install script, Tailscale serve owner step, Homepage 
 ## Working agreement
 1. Decisions go into `docs/DECISIONS.md` as a new ADR at the top; other docs link to the ADR.
 2. Tests ship with the code: `.venv/Scripts/python.exe -m pytest -q` must pass. Engine changes get a
-   `scripts/bench.py` run on `samples/portrait-man.jpg` and the numbers go in the PR or commit body.
+   `scripts/bench.py` run on `samples/portrait-man.jpg` (and `--palette auto4` on `samples/portrait-color.jpg`
+   for colour) and the numbers go in the PR or commit body. Compare on the lightness error, not line count.
 3. The prep pipeline is one function for preview and generation (`prep.prepare_target`); never let the
    preview and the engine see different images.
 4. Settings, not constants: anything a household would change (board, thread, engine knobs) is a field on

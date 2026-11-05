@@ -65,6 +65,13 @@ Not done:
 - Engine B for colour.
 - Thread brand palettes (measured colours of real spools); the presets are nominal hex values.
 
+## v3 part three, speed (built 2026-11-05)
+
+Numba kernels for the fan scoring and the colour per-pixel model (ADR-018): colour plans about
+four times faster, single-thread plans faster too; numpy fallbacks keep the engines working
+without Numba. A CUDA port of the colour engine remains possible (both homelab machines have
+NVIDIA cards) but was judged not worth its image and driver footprint yet.
+
 ## Later
 
 - Square and rectangular frames; printable thread-width test pattern; minimum-weight matching in

@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     SAS_DATA_DIR=/data \
     SAS_HOST=0.0.0.0 \
-    SAS_PORT=8050
+    SAS_PORT=8050 \
+    NUMBA_CACHE_DIR=/home/studio/.cache/numba \
+    NUMBA_NUM_THREADS=2
 
 # libgomp is needed by opencv-python-headless; libheif codecs come bundled with pillow-heif wheels.
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl \

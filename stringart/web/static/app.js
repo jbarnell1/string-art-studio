@@ -792,6 +792,8 @@
         numberField(board, "pin_diameter_mm", "Pin diameter", { min: 0.5, max: 5, length: true, step: state.units === "in" ? 0.005 : 0.1, help: "Match the brad gauge; used for the fab files." }, boardChanged),
         numberField(board, "thread_width_mm", "Thread width", { min: 0.05, max: 2, length: true, step: state.units === "in" ? 0.001 : 0.01, help: "Measure ten wraps around a ruler and divide by ten." }, boardChanged),
         numberField(board, "thread_opacity", "Thread opacity", { min: 0.2, max: 3, step: 0.05, help: "Calibration knob after the pilot build. 1 means the thread covers exactly its width." }, boardChanged),
+        numberField(board, "board_thickness_mm", "Board thickness", { min: 6, max: 60, length: true, step: state.units === "in" ? 0.125 : 1, help: "Used for the brad length in the build estimate." }, boardChanged),
+        numberField(board, "wrap_height_mm", "Brad height per wrap", { min: 0.1, max: 2, length: true, step: state.units === "in" ? 0.001 : 0.01, help: "How much brad one wrap of thread uses. Wrap 20 turns round a nail, measure, divide by 20." }, boardChanged),
       ]),
       el("div", { class: "row2" }, [
         el("div", { class: "field" }, [el("label", {}, "Thread colour"), threadColor]),
@@ -1030,6 +1032,36 @@
     }
     renderMetrics();
 
+    // Build estimate: time, brads and spools from the plan's own pin wraps.
+    const estimateBox = el("div");
+    let pace = Number(localStorage.getItem("sas-pace") || 400);
+    const paceSel = el("select", { "aria-label": "Building pace", style: "width:auto" }, [250, 300, 400, 500, 600].map((v) => el("option", { value: v, selected: v === pace }, `${v} lines an hour`)));
+    paceSel.addEventListener("change", () => { pace = Number(paceSel.value); try { localStorage.setItem("sas-pace", String(pace)); } catch (_) { /* private mode */ } renderEstimate(); });
+    sheet.append(el("h2", { class: "section", style: "margin-top:24px" }, "Build estimate"), estimateBox);
+    const hrs = (h) => h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(1)} h`;
+    async function renderEstimate() {
+      const primary = shown.find((r) => r.id === runId) || shown[0];
+      if (!primary || primary.status !== "done") { estimateBox.textContent = ""; estimateBox.append(el("div", { class: "muted" }, "The estimate appears when the plan finishes.")); return; }
+      let e;
+      try { e = await api.get(`api/runs/${primary.id}/estimate?pace=${pace}`); } catch (err) { estimateBox.textContent = "Estimate unavailable: " + err.message; return; }
+      const sessions = Math.ceil(e.hours.total / 3);
+      const rows = [
+        ["Time", [el("b", {}, hrs(e.hours.total)), ` in all, about ${sessions} session${sessions === 1 ? "" : "s"} of 3 hours`]],
+        ["Pace", [paceSel, el("div", { class: "muted", style: "font-size:12px;margin-top:4px" }, `Stringing ${hrs(e.hours.stringing)}, hammering ${e.pins} brads ${hrs(e.hours.hammering)}${e.thread_changes ? `, ${e.thread_changes} thread change${e.thread_changes === 1 ? "" : "s"} ${hrs(e.hours.thread_changes)}` : ""}.`)]],
+        ["Brads", e.brad.label ? [el("b", {}, `${e.brad.label}, ${e.brad.gauge} gauge`), el("div", { class: "muted", style: "font-size:12px;margin-top:4px" }, `About ${Math.round(e.brad.exposed_mm)} mm showing above the board and ${Math.round(e.brad.embed_mm)} mm in it. Drive them all to the same height, leaning slightly outward.`)] : "No common brad is long enough"],
+        ["Wraps per pin", `busiest ${e.wraps.max}, most pins under ${Math.round(e.wraps.p90)}, average ${e.wraps.mean.toFixed(0)}`],
+        ["Thread", e.layers.length > 1
+          ? e.layers.map((l) => el("div", {}, [el("span", { class: "swatch" }, [el("i", { style: `background:${l.color}` }), `${l.name}: ${fmt.len(l.with_margin_mm)}, ${l.spools} spool${l.spools === 1 ? "" : "s"}`])]))
+          : `${fmt.len(e.layers[0] ? e.layers[0].with_margin_mm : 0)} with a 20% margin, ${e.spools} spool${e.spools === 1 ? "" : "s"} of 1,000 yd`],
+      ];
+      const table = el("table", { class: "metrics estimate" }, el("tbody", {}, rows.map(([k, v]) => el("tr", {}, [el("td", {}, k), el("td", {}, v)]))));
+      estimateBox.textContent = "";
+      estimateBox.append(table);
+      e.notes.forEach((n) => estimateBox.append(el("p", { class: "note" }, n)));
+      estimateBox.append(el("p", { class: "muted", style: "font-size:12px" }, `Estimates until your pilot build. They assume ${e.assumptions.wrap_height_mm} mm of brad per wrap and a ${fmt.size(e.assumptions.board_thickness_mm)} board; both are in Settings under Board, pins and thread.`));
+    }
+    renderEstimate();
+
     // Exports.
     const paperName = state.units === "in" ? "Letter" : "A4";
     const paperKey = state.units === "in" ? "letter" : "a4";
@@ -1071,7 +1103,7 @@
       if (status === "done") {
         c.img.src = `api/runs/${id}/render.png?t=${ev.preview_version || ""}`;
         c.phase.textContent = "";
-        if (ev.metrics) { c.run.metrics = ev.metrics; c.run.status = "done"; renderMetrics(); }
+        if (ev.metrics) { c.run.metrics = ev.metrics; c.run.status = "done"; renderMetrics(); renderEstimate(); }
       } else if (status === "failed") {
         c.phase.textContent = "Failed: " + (ev.error || c.run.error_message || "unknown error");
       } else if (status === "cancelled") {

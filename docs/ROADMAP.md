@@ -77,6 +77,11 @@ NVIDIA cards) but was judged not worth its image and driver footprint yet.
 Uneven pin spacing (ADR-019) removes the concentric rings that evenly spaced pins produce in dense
 areas; it is on by default for new plans and older plans keep their even pins.
 
+## v3 part five, build estimate (built 2026-11-05)
+
+The results page shows the time to build at a chosen pace, the brad length and gauge from the
+busiest pin's wraps, and the spools per colour (ADR-020).
+
 ## Later
 
 - Square and rectangular frames; printable thread-width test pattern; minimum-weight matching in

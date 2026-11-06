@@ -31,6 +31,8 @@ template and laser or CNC files, then string the piece from your phone with huge
 - Colour: pick a palette (CMYK, warm skin, earth, primary), your own colours, or let it choose from the
   photo; each colour is one continuous thread, laid lightest first and black last, matched in CIELAB
   from the viewing distance. Build mode stops at every thread change and says what to do.
+- A build estimate on every plan: hours at your pace, the brad length and gauge the busiest pin
+  needs, and spools per colour.
 - Exports: pin template PDF (tiled across Letter or A4 with alignment marks, or one large sheet, with a
   100 mm check bar), SVG and DXF fab files (holes or a notched ring), sequence as TXT, CSV or JSON, the
   render and comparison pictures, and a project bundle ZIP to move a project between instances.

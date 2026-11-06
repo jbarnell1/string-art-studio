@@ -31,6 +31,7 @@ from stringart import faces as faces_mod
 from stringart.jobs import JobManager
 from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, change_phrase, pin_phrase
 from stringart.engine.color import PALETTE_PRESETS, color_name
+from stringart.estimate import build_estimate
 from stringart.prep import (PrepSettings, background_removal_available, encode_source_jpeg, load_source,
                             preview_jpeg)
 
@@ -533,6 +534,12 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         if fmt == "txt":
             return _attachment(seq_mod.sequence_txt(board, layers), f"{stem}.txt", "text/plain")
         raise HTTPException(404, "format must be json, csv or txt")
+
+    @app.get("/api/runs/{rid}/estimate")
+    def run_estimate(rid: str, pace: float = 400.0, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
+        """Time, wraps per pin, brad length and spools for this plan at a building pace (lines an hour)."""
+        run = _run_or_404(ctx, rid)
+        return build_estimate(BoardConfig.from_dict(run["board"]), _read_layers(ctx, run), pace)
 
     @app.get("/api/runs/{rid}/steps")
     def run_steps(rid: str, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:

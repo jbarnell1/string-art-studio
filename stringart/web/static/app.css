@@ -223,6 +223,9 @@ table.data tr.clickable:hover td { background: var(--raised); }
 .chip { height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid var(--control); background: var(--surface); cursor: pointer; font-size: var(--fs-small); }
 .chip:hover { background: var(--raised); }
 .chip[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
+.metrics.estimate td:first-child { width: 150px; color: var(--muted); vertical-align: top; }
+.metrics.estimate td { text-align: left; }
+.note { margin: 10px 0 0; padding: 8px 10px; background: var(--pill-warning-bg); color: var(--pill-warning-ink); border-radius: var(--radius-control); font-size: var(--fs-small); }
 .swatches, .palette-custom { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; }
 .swatch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-small); }
 .swatch i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--control); }

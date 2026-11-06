@@ -89,6 +89,9 @@ def test_full_flow(client: TestClient):
     assert client.get(f"/api/runs/{rid}/fab.svg").status_code == 200
     assert client.get(f"/api/runs/{rid}/fab.dxf?variant=ring").status_code == 200
 
+    est = client.get(f"/api/runs/{rid}/estimate?pace=300").json()
+    assert est["lines"] == done[0]["metrics"]["line_count"] and est["lines_per_hour"] == 300
+    assert est["brad"]["label"] and est["hours"]["total"] > est["hours"]["stringing"] > 0
     assert client.put(f"/api/runs/{rid}/progress", json={"step": 7, "device": "test"}).json()["step"] == 7
     assert client.get(f"/api/runs/{rid}/progress").json()["step"] == 7
 

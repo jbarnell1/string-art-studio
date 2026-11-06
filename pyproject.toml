@@ -1,6 +1,6 @@
 [project]
 name = "string-art-studio"
-version = "0.3.3"
+version = "0.3.4"
 description = "Turn a photo into a pin-and-thread build plan: image editor, two generation engines, true-size templates, fab files and a phone build mode."
 readme = "README.md"
 license = { text = "MIT" }

@@ -125,6 +125,9 @@ new template prints the uneven positions. Never mix a template and a plan from d
 ## Calibration after the pilot build
 
 1. Measure the thread: wrap ten turns around a ruler, divide by ten, enter it as thread width.
+   Wrap twenty turns round a spare brad, measure the height they take, divide by twenty, and enter
+   it as "Brad height per wrap"; set "Board thickness" too. The build estimate then gives the right
+   brad length. Time a few hundred lines and pick that pace on the results page.
 2. String the piece and photograph it from the viewing distance beside the simulated render.
 3. If the real piece is darker than the render, lower `thread_opacity`; lighter, raise it. Re-run the
    same project (every run is kept) until the simulation matches, then save the board as a preset.

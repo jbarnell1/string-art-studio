@@ -4,6 +4,18 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-020 - A build estimate from the plan's own pin wraps
+**2026-11-05.** The owner asked whether 8,000 lines is realistic, how big the brads must be and how
+long a build takes. The results page now answers from the plan itself (`stringart/estimate.py`,
+`GET /api/runs/{id}/estimate?pace=`): wraps per pin (every middle visit plus the knots where a colour
+starts and ends), the brad height the busiest pin needs (wraps times `wrap_height_mm`, default
+0.35 mm, plus 3 mm of headroom), the depth into the board (`board_thickness_mm` minus 5, within 8 to
+15 mm), the shortest common brad that covers both, 18 gauge or 16 gauge above 60 wraps, and the time
+at a pace the user picks (default 400 lines an hour) plus 10 s per brad and 5 minutes per thread
+change. Wrap height, board thickness and pace are guesses until the pilot build and are labelled
+as such; the first two are board settings so a household can calibrate them. On the owner's
+8,000-line plan: busiest pin 69 wraps, 1¾" 16 gauge brads, 20.7 hours, 5 spools.
+
 ### ADR-019 - Pins are spaced a little unevenly, so chords do not stack into rings
 **2026-11-05.** The owner saw a bullseye of concentric circles in dark areas of an 8,000-line plan,
 from both engines. It is geometry, not rendering: a chord that skips d pins on a ring of radius R

@@ -39,6 +39,10 @@ class BoardConfig:
     # Plans stored before this setting existed have no key and keep even spacing (see from_dict).
     pin_jitter: float = 0.3
     jitter_seed: int = 1
+    # Build estimate inputs (ADR-020): the board's thickness, and the brad height one wrap of thread
+    # takes. Both are guesses until the pilot build measures them.
+    board_thickness_mm: float = 19.0
+    wrap_height_mm: float = 0.35
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "BoardConfig":
@@ -69,6 +73,8 @@ class BoardConfig:
         self.work_res = int(min(max(self.work_res, 300), 2400))
         self.pin_jitter = float(min(max(float(self.pin_jitter or 0.0), 0.0), self.max_pin_jitter))
         self.jitter_seed = int(self.jitter_seed or 0) & 0x7FFFFFFF
+        self.board_thickness_mm = float(min(max(float(self.board_thickness_mm or 19.0), 6.0), 60.0))
+        self.wrap_height_mm = float(min(max(float(self.wrap_height_mm or 0.35), 0.1), 2.0))
         self.thread_color = normalize_hex(self.thread_color, "#161616")
         self.board_color = normalize_hex(self.board_color, "#f6f3ee")
         clean = []

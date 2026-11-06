@@ -1064,6 +1064,33 @@
     }
     renderEstimate();
 
+    // 3D-print drill guide: the link carries the printer and drill choices, remembered per device.
+    function jigCard() {
+      let prefs = {};
+      try { prefs = JSON.parse(localStorage.getItem("sas-jig") || "{}"); } catch (_) { /* private mode */ }
+      const jp = Object.assign({ bed: 225, bit: 1.0, clearance: 0.2, skirt: true }, prefs);
+      const link = el("a", { class: "btn small primary" }, "Download jig (ZIP of STL)");
+      const update = () => {
+        link.href = `api/runs/${runId}/jig.zip?bed=${jp.bed}&bit=${jp.bit}&clearance=${jp.clearance}&skirt=${jp.skirt ? 1 : 0}`;
+        try { localStorage.setItem("sas-jig", JSON.stringify(jp)); } catch (_) { /* private mode */ }
+      };
+      const num = (key, label, step, min, max, width) => {
+        const input = el("input", { type: "number", step, min, max, value: jp[key], style: `width:${width}px;height:32px`, "aria-label": label });
+        input.addEventListener("change", () => { const v = Number(input.value); if (!Number.isNaN(v)) { jp[key] = clamp(v, min, max); input.value = jp[key]; update(); } });
+        return el("label", { class: "muted", style: "display:flex;gap:6px;align-items:center;font-size:12px" }, [label, input]);
+      };
+      const skirtBox = el("input", { type: "checkbox", checked: jp.skirt, "aria-label": "Skirt over the board's edge" });
+      skirtBox.addEventListener("change", () => { jp.skirt = skirtBox.checked; update(); });
+      update();
+      return el("div", { class: "export-card panel" }, [
+        el("h3", {}, "3D-print drill guide"),
+        el("p", {}, "A keyed ring of segments that sits on the board with a guide hole at every pin, so you drill pilot holes in exactly the right places and glue the pins in instead of hammering. Includes a height block for the pins and a test strip to check the hole fit first. Fits every plan with this board's settings; measure your board and set its real Diameter first."),
+        el("div", { class: "btn-row", style: "align-items:center" }, [num("bed", "Bed mm", 1, 120, 600, 76), num("bit", "Drill bit mm", 0.05, 0.5, 4, 70), num("clearance", "Clearance mm", 0.05, -0.2, 1, 70),
+          el("label", { class: "muted", style: "display:flex;gap:6px;align-items:center;font-size:12px" }, [skirtBox, "Skirt"])]),
+        el("div", { class: "btn-row", style: "margin-top:8px" }, [link]),
+      ]);
+    }
+
     // Exports.
     const paperName = state.units === "in" ? "Letter" : "A4";
     const paperKey = state.units === "in" ? "letter" : "a4";
@@ -1076,6 +1103,7 @@
         el("a", { class: "btn small", href: `api/runs/${runId}/template.pdf?paper=single` }, "Single sheet"),
       ])]),
       el("div", { class: "export-card panel" }, [el("h3", {}, "Fab file for laser or CNC"), el("p", {}, "Board outline plus pin holes at a chosen diameter, or a notched ring. Millimetre units."), el("div", { class: "btn-row", style: "align-items:center" }, [el("label", { class: "muted", style: "display:flex;gap:6px;align-items:center;font-size:12px" }, ["Hole mm", holeInput]), fabLink("svg", "holes"), fabLink("dxf", "holes"), fabLink("svg", "ring"), fabLink("dxf", "ring")])]),
+      jigCard(),
       el("div", { class: "export-card panel" }, [el("h3", {}, "Sequence"), el("p", {}, "Pin order for any player or a manual build. The JSON carries the board and the pin table too."), el("div", { class: "btn-row" }, [
         el("a", { class: "btn small", href: `api/runs/${runId}/sequence.txt` }, "TXT"),
         el("a", { class: "btn small", href: `api/runs/${runId}/sequence.csv` }, "CSV"),

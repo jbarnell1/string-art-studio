@@ -113,6 +113,7 @@ All under `/api`. `GET /api/docs` is the live OpenAPI page.
 | `GET /runs/{id}`, `GET .../events` (SSE), `POST .../cancel`, `PATCH`, `DELETE` | Run status and control |
 | `GET /runs/{id}/{live.jpg,render.png,target.jpg,compare.jpg?blur=1}` | Pictures |
 | `GET /runs/{id}/sequence.{txt,csv,json}`, `.../steps` | Pin order; `steps` is the build-mode payload |
+| `GET /runs/{id}/jig.zip?bed=&bit=&clearance=&skirt=&edge=` | 3D-print drilling jig: ring segments, height block, hole test strip, README |
 | `GET /runs/{id}/estimate?pace=` | Build estimate: hours, wraps per pin, brad length and gauge, spools per colour |
 | `GET /runs/{id}/template.pdf?paper=letter|a4|single` | True-size pin template |
 | `GET /runs/{id}/fab.{svg,dxf}?variant=holes|ring&hole=` | Fab files |

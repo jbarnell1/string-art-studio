@@ -6,6 +6,7 @@ that base."""
 from __future__ import annotations
 
 import json
+import math
 import logging
 from contextlib import asynccontextmanager
 import queue
@@ -32,6 +33,7 @@ from stringart.jobs import JobManager
 from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, change_phrase, pin_phrase
 from stringart.engine.color import PALETTE_PRESETS, color_name
 from stringart.estimate import build_estimate
+from stringart.exports import jig as jig_mod
 from stringart.prep import (PrepSettings, background_removal_available, encode_source_jpeg, load_source,
                             preview_jpeg)
 
@@ -540,6 +542,22 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         """Time, wraps per pin, brad length and spools for this plan at a building pace (lines an hour)."""
         run = _run_or_404(ctx, rid)
         return build_estimate(BoardConfig.from_dict(run["board"]), _read_layers(ctx, run), pace)
+
+    @app.get("/api/runs/{rid}/jig.zip")
+    def run_jig(rid: str, bed: float = 225.0, bit: float = 1.0, clearance: float = 0.2, skirt: int = 1,
+                edge: float = 0.4, ctx: Context = Depends(get_ctx)) -> Response:
+        """3D-printable drilling jig for this plan's board: keyed ring segments, a height block
+        set from the build estimate, and a hole-fit test strip (ADR-021)."""
+        run = _run_or_404(ctx, rid)
+        board = BoardConfig.from_dict(run["board"])
+        est = build_estimate(board, _read_layers(ctx, run))
+        settings = jig_mod.JigSettings(bed_mm=bed, bit_mm=bit, hole_clearance_mm=clearance, skirt=bool(skirt),
+                                       edge_clearance_mm=edge, gauge_height_mm=math.ceil(est["brad"]["exposed_mm"]))
+        try:
+            data = jig_mod.jig_zip(board, settings, embed_mm=est["brad"]["embed_mm"])
+        except ValueError as err:
+            raise HTTPException(400, str(err)) from err
+        return _attachment(data, f"drill-jig-{board.pin_count}pins-{board.diameter_mm:.0f}mm.zip", "application/zip")
 
     @app.get("/api/runs/{rid}/steps")
     def run_steps(rid: str, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:

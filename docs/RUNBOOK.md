@@ -116,6 +116,18 @@ In build mode the current colour sits in the top bar and the player stops at eac
 change thread, tie on at the pin shown, press Next. Buy one spool per colour; the metrics table
 gives the thread per colour.
 
+## Building the board with a 3D printer
+
+1. Cut or buy the round (¾" plywood holds pins better than MDF), prime and paint it. Measure its
+   diameter in three directions and enter the real figure as Diameter in the Board panel, and the
+   thickness as Board thickness. Save the board as a preset and keep it: every plan with these
+   settings fits the same board.
+2. Generate the plan you want to build. On its results page set your printer's bed size and drill
+   bit in "3D-print drill guide" and download the ZIP. Untick Skirt if the round is not true.
+3. Follow README.txt in the ZIP: print the hole test strip and pick the clearance, print the
+   segments, lock them round the board from A at twelve o'clock, drill every pilot hole, glue the
+   pins in using the height block, let the glue cure, and load-test one offcut pin overnight.
+
 ## Rings in dense areas
 
 Plans made before v0.3.3 use evenly spaced pins and can show concentric rings in dark areas. Open

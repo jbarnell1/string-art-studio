@@ -4,6 +4,21 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-021 - A 3D-printable drilling jig; pins are glued into drilled holes, not hammered
+**2026-11-05.** The owner worried that a hammered brad that works loose would ruin a build hours in,
+and has a 3D printer (Elegoo Neptune 4 Pro, 225 mm bed). The thread loads every pin sideways towards
+the centre, so the failure is a brad leaning or wallowing its hole, not pulling out; a pin pressed
+into a slightly undersized drilled hole with glue does not lean. PLA creeps under steady load, so it
+never carries thread: it only guides the drill. `stringart/exports/jig.py` builds, with manifold3d
+for watertight booleans, a ring of segments (one per sector, split further when a sector will not
+fit the bed) with a guide hole over every pin, a dovetail into the next segment, a skirt over the
+board's edge (optional, for boards that are not quite round), and the letter and pin range debossed;
+plus a height block set from the build estimate and a strip of holes at five clearances to check the
+fit first. Parts are turned over for printing, a rotation, so the uneven hole pattern is never
+mirrored. Checks in the tests: one through hole per pin (genus), a vertical ray through every pin
+centre misses the plate and one 2 mm beside it hits, mating dovetails do not overlap, every part fits
+the bed. On the default board: eight segments of 30 pins, 182 mm square on the bed, about 53 cm3 each.
+
 ### ADR-020 - A build estimate from the plan's own pin wraps
 **2026-11-05.** The owner asked whether 8,000 lines is realistic, how big the brads must be and how
 long a build takes. The results page now answers from the plan itself (`stringart/estimate.py`,

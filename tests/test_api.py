@@ -92,6 +92,8 @@ def test_full_flow(client: TestClient):
     est = client.get(f"/api/runs/{rid}/estimate?pace=300").json()
     assert est["lines"] == done[0]["metrics"]["line_count"] and est["lines_per_hour"] == 300
     assert est["brad"]["label"] and est["hours"]["total"] > est["hours"]["stringing"] > 0
+    jig = client.get(f"/api/runs/{rid}/jig.zip?bed=225&bit=1.0&clearance=0.2&skirt=1")
+    assert jig.status_code == 200 and jig.content[:2] == b"PK"
     assert client.put(f"/api/runs/{rid}/progress", json={"step": 7, "device": "test"}).json()["step"] == 7
     assert client.get(f"/api/runs/{rid}/progress").json()["step"] == 7
 

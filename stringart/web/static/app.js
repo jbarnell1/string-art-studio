@@ -942,6 +942,11 @@
     // Cards: target + one per run. The metrics box exists first because a finished run fills it
     // while its card is being built.
     const metricsBox = el("div");
+    // Declared before the cards: a finished run's card renders the metrics and the estimate at once.
+    let pace = 400;
+    try { pace = Number(localStorage.getItem("sas-pace") || 400); } catch (_) { /* private mode */ }
+    const estimateBox = el("div");
+    const paceSel = el("select", { "aria-label": "Building pace", style: "width:auto" }, [250, 300, 400, 500, 600].map((v) => el("option", { value: v, selected: v === pace }, `${v} lines an hour`)));
     let viewBlur = false;
     const grid = el("div", { class: "compare-grid" });
     // The target is written a moment after the run starts; retry until it exists.
@@ -1033,13 +1038,10 @@
     renderMetrics();
 
     // Build estimate: time, brads and spools from the plan's own pin wraps.
-    const estimateBox = el("div");
-    let pace = Number(localStorage.getItem("sas-pace") || 400);
-    const paceSel = el("select", { "aria-label": "Building pace", style: "width:auto" }, [250, 300, 400, 500, 600].map((v) => el("option", { value: v, selected: v === pace }, `${v} lines an hour`)));
     paceSel.addEventListener("change", () => { pace = Number(paceSel.value); try { localStorage.setItem("sas-pace", String(pace)); } catch (_) { /* private mode */ } renderEstimate(); });
     sheet.append(el("h2", { class: "section", style: "margin-top:24px" }, "Build estimate"), estimateBox);
-    const hrs = (h) => h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(1)} h`;
     async function renderEstimate() {
+      const hrs = (h) => h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(1)} h`;
       const primary = shown.find((r) => r.id === runId) || shown[0];
       if (!primary || primary.status !== "done") { estimateBox.textContent = ""; estimateBox.append(el("div", { class: "muted" }, "The estimate appears when the plan finishes.")); return; }
       let e;

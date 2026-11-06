@@ -14,10 +14,10 @@ from stringart.board import BoardConfig, thread_estimate
 
 # Common brad lengths in inches, with millimetres for the label.
 BRAD_LENGTHS_IN = (0.625, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5)
-# Brad gauge follows the load: 18 gauge (1.0 mm) for most plans, 16 gauge (1.3 mm) when the busiest
+# Brad gauge follows the load: 18 gauge (1.2 mm) for most plans, 16 gauge (1.6 mm) when the busiest
 # pin carries enough wraps to bend a thin brad. The template prints marks, so any gauge fits it.
-GAUGE_NORMAL = (18, 1.02)
-GAUGE_HEAVY = (16, 1.29)
+GAUGE_NORMAL = (18, 1.21)          # nail gauge, not AWG: 0.0475 in
+GAUGE_HEAVY = (16, 1.59)           # 0.0625 in
 HEADROOM_MM = 3.0            # clear brad above the top wrap so the last wraps cannot ride off
 HAMMER_S_PER_PIN = 10.0      # placing and driving one brad through the paper template
 CHANGE_MIN = 5.0             # tie off, swap spools, tie on

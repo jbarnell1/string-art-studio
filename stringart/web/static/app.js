@@ -234,7 +234,8 @@
     { group: "tone", key: "contrast", label: "Contrast", min: -1, max: 1, step: 0.01 },
     { group: "tone", key: "gamma", label: "Gamma", min: 0.3, max: 3, step: 0.01, help: "Below 1 darkens mid-tones. Since v3 the engine gives mid-tones the thread they really need, so 1.0 is the faithful setting; lower it only for a moodier piece." },
     { group: "levels", key: "black_point", label: "Black point", min: 0, max: 0.95, step: 0.01, help: "Everything darker than this becomes true black." },
-    { group: "levels", key: "white_point", label: "White point", min: 0.05, max: 1, step: 0.01, help: "Everything lighter than this becomes true white, so the thread leaves it alone." },
+    { group: "levels", key: "white_point", label: "White point", min: 0.05, max: 1, step: 0.01, help: "Everything lighter than this becomes the brightest white." },
+    { group: "levels", key: "white_level", label: "Brightest white", min: 0.5, max: 1, step: 0.01, help: "How light the lightest part of the piece gets. Below 1, highlights still get a light, even hatching; at 1 they are left as bare board with a few stray lines." },
     { group: "detail", key: "clahe_clip", label: "Local contrast", min: 0, max: 4, step: 0.1, help: "0 is off. Pulls out facial detail without blowing out the whole image." },
     { group: "detail", key: "edge_strength", label: "Edge emphasis", min: 0, max: 2, step: 0.05, help: "Strengthens outlines such as the jaw and the eyes." },
     { group: "detail", key: "edge_radius", label: "Edge radius", min: 0.5, max: 10, step: 0.5 },
@@ -243,10 +244,10 @@
     { group: "mix", key: "mix_b", label: "Blue weight", min: 0, max: 1, step: 0.01 },
   ];
   const PREP_PRESETS = {
-    "Portrait": { gamma: 1.0, black_point: 0.03, white_point: 0.9, clahe_clip: 0.6, edge_strength: 0.3, contrast: 0.05, face_emphasis: 1.0, structure_weight: 0.5 },
-    "High key": { gamma: 0.9, black_point: 0.02, white_point: 0.8, clahe_clip: 0.5, edge_strength: 0.5, face_emphasis: 1.0, structure_weight: 0.4 },
-    "Soft": { gamma: 1.0, black_point: 0.0, white_point: 1.0, clahe_clip: 0, edge_strength: 0, contrast: 0, face_emphasis: 0.5, structure_weight: 0 },
-    "Pet": { gamma: 1.0, black_point: 0.04, white_point: 0.92, clahe_clip: 1.2, edge_strength: 0.6, edge_radius: 1.5, face_emphasis: 0, structure_weight: 0.7 },
+    "Portrait": { gamma: 1.0, black_point: 0.03, white_point: 0.9, clahe_clip: 0.6, edge_strength: 0.3, contrast: 0.05, white_level: 0.8, face_emphasis: 1.0, structure_weight: 0.5 },
+    "High key": { gamma: 0.9, black_point: 0.02, white_point: 0.8, clahe_clip: 0.5, edge_strength: 0.5, white_level: 0.9, face_emphasis: 1.0, structure_weight: 0.4 },
+    "Soft": { gamma: 1.0, black_point: 0.0, white_point: 1.0, clahe_clip: 0, edge_strength: 0, contrast: 0, white_level: 0.8, face_emphasis: 0.5, structure_weight: 0 },
+    "Pet": { gamma: 1.0, black_point: 0.04, white_point: 0.92, clahe_clip: 1.2, edge_strength: 0.6, edge_radius: 1.5, white_level: 0.8, face_emphasis: 0, structure_weight: 0.7 },
   };
 
   async function viewStudio(pid) {
@@ -665,7 +666,7 @@
     // Photo: crop, zoom, rotate and tone presets.
     const cropBody = el("div", {}, [
       el("div", { class: "chips", style: "margin-bottom:14px" }, [
-        el("button", { class: "chip", type: "button", title: "Fit black and white to this photo: the darkest 1% goes black, the brightest 5% white, and faces stay in greys", disabled: !project.has_image, onclick: async (ev) => {
+        el("button", { class: "chip", type: "button", title: "Fit the levels to this photo: the darkest 1% goes black, the lightest becomes a light grey so highlights keep an even hatching, and faces stay in greys", disabled: !project.has_image, onclick: async (ev) => {
           const btn = ev.currentTarget;
           btn.disabled = true;
           try {

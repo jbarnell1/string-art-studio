@@ -89,8 +89,8 @@ results page (ADR-021).
 
 ## v3 part seven, auto tone (built 2026-11-09)
 
-An Auto chip in the studio fits black and white points to the photo and frame, keeping faces in
-greys (ADR-022).
+An Auto chip in the studio fits black and white points to the photo and frame (ADR-022), and a
+Brightest white setting (default 0.8) keeps highlights and faces evenly hatched (ADR-023).
 
 ## Later
 

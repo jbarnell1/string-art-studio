@@ -4,6 +4,21 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-023 - The brightest white is a light grey (0.8), and Auto tone stretches to it
+**2026-11-09.** Side by side, ADR-022's Auto left cheeks and foreheads paler and barer than Soft.
+The owner named the cause: a light area crossed by a few stray threads reads as a hole, and the eye
+picks out each stray line, so a face loses its depth; the kit makers' pieces have no bare patches.
+Real whites (eye whites, catchlights) are tiny and can go. New `PrepSettings.white_level`
+("Brightest white", 0.5 to 1, default 0.8) scales the finished target so nothing asks for lighter
+than that, and the engine lays an even, light hatching over every highlight. Sweep on the same five
+photos and board: ceilings 1.0, 0.9, 0.85, 0.8 and 0.75 on Soft levels. Mean mid-band detail
+correlation at 0.75 m rose from 0.666 (no ceiling) to 0.693 at 0.8 with SSIM unchanged (0.464); at
+0.75 the faces went flat and muddy. Plans grow about 15% (4,110 to 4,720 lines on average). Auto
+tone becomes: black point at the 1st percentile, white point at the 99.5th, brightest white 0.8,
+gamma 1; ADR-022's 95th percentile and its face cap are gone, since the ceiling does that job and
+the tested winner had neither. Presets set it too: Soft, Portrait and Pet 0.8, High key 0.9. Plans
+from before this change keep their stored sequence; opening the project now shows 0.8 in the studio.
+
 ### ADR-022 - Auto tone: levels from the photo's own percentiles, with a light face kept in greys
 **2026-11-09.** The owner's plan of a girl on a dark background came out pale and featureless next to
 a kit maker's. The cause was tone, not the engine: white point 0.8 with edge emphasis and CLAHE

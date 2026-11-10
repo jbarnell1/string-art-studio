@@ -39,6 +39,9 @@ class PrepSettings:
     gamma: float = 1.0             # 0.3 .. 3
     black_point: float = 0.0       # 0 .. 1
     white_point: float = 1.0       # 0 .. 1
+    # Brightest white (ADR-023): the lightest the target ever asks for. Below 1 even the highlights
+    # get a light, even hatching; a pale area crossed by a few stray lines reads as a hole.
+    white_level: float = 0.8       # 0.5 .. 1
     clahe_clip: float = 0.0        # 0 = off, up to 4
     clahe_grid: int = 8
     mix_r: float = 0.299
@@ -72,6 +75,7 @@ class PrepSettings:
         self.gamma = float(min(max(self.gamma, 0.3), 3.0))
         self.black_point = float(min(max(self.black_point, 0.0), 0.95))
         self.white_point = float(min(max(self.white_point, self.black_point + 0.05), 1.0))
+        self.white_level = float(min(max(self.white_level, 0.5), 1.0))
         self.clahe_clip = float(min(max(self.clahe_clip, 0.0), 4.0))
         self.clahe_grid = int(min(max(self.clahe_grid, 2), 16))
         self.edge_strength = float(min(max(self.edge_strength, 0.0), 2.0))
@@ -160,44 +164,35 @@ def tone_pipeline(framed_rgb: np.ndarray, prep: PrepSettings) -> np.ndarray:
         blurred = cv2.GaussianBlur(gray, (0, 0), radius)
         detail = gray - blurred
         gray = np.clip(gray + prep.edge_strength * 1.5 * detail, 0, 1)
+    if prep.white_level < 1.0:
+        gray = gray * prep.white_level
     return gray.astype(np.float32)
 
 
-# Auto tone (ADR-022). Tuned on five photos by generating plans on an 18 inch, 220 pin board and
-# scoring each render against the untouched photo: a plain levels stretch beat gamma and median
-# rules, CLAHE and edge emphasis, and every old preset. The subject cap keeps a light face in greys:
-# without it a pale face on a dark background stretched to near white and the engine left it bare.
+# Auto tone (ADR-022, revised by ADR-023). Tuned on five photos by generating plans on an 18 inch,
+# 220 pin board and scoring each render against the untouched photo, then by eye on face close-ups.
+# A plain levels stretch with gamma 1 beat gamma and median rules, CLAHE and edge emphasis. Mapping
+# the top of the range to a light grey rather than bare board keeps highlights and faces hatched.
 AUTO_BLACK_PERCENTILE = 1.0
-AUTO_WHITE_PERCENTILE = 95.0
-AUTO_SUBJECT_MID = 0.70
+AUTO_WHITE_PERCENTILE = 99.5
+AUTO_WHITE_LEVEL = 0.8
 
 
-def auto_tone(framed_rgb: np.ndarray, prep: PrepSettings, board: BoardConfig,
-              subject: np.ndarray | None = None) -> dict[str, float]:
-    """Tone settings for this photo and frame: the darkest 1% of the board goes to black, the
-    brightest 5% to white, and the white point is raised as needed so the subject's middle tone
-    (the faces when the mask is given, else the whole board) ends at or below 70% lightness.
-    framed_rgb is the frame_source output; subject is a boolean mask at the same size."""
-    neutral = PrepSettings(mix_r=prep.mix_r, mix_g=prep.mix_g, mix_b=prep.mix_b)
+def auto_tone(framed_rgb: np.ndarray, prep: PrepSettings, board: BoardConfig) -> dict[str, float]:
+    """Tone settings for this photo and frame: the darkest 1% inside the pin ring goes to black and
+    the brightest 0.5% to the brightest white, which is a light grey (AUTO_WHITE_LEVEL).
+    framed_rgb is the frame_source output."""
+    neutral = PrepSettings(mix_r=prep.mix_r, mix_g=prep.mix_g, mix_b=prep.mix_b, white_level=1.0)
     gray = tone_pipeline(framed_rgb, neutral)
     res = gray.shape[0]
     yy, xx = np.mgrid[0:res, 0:res]
     dist = np.hypot(xx - res / 2.0 + 0.5, yy - res / 2.0 + 0.5) * board.pixel_mm(res)
-    inside = dist < board.pin_radius_mm - 0.03 * board.diameter_mm
-    g = gray[inside]
+    g = gray[dist < board.pin_radius_mm - 0.03 * board.diameter_mm]
     lo = float(np.percentile(g, AUTO_BLACK_PERCENTILE))
-    hi = float(np.percentile(g, AUTO_WHITE_PERCENTILE))
-    ref = g
-    if subject is not None:
-        sel = subject.astype(bool) & inside
-        if int(sel.sum()) > 100:
-            ref = gray[sel]
-    mid = float(np.median(ref))
-    hi = min(max(hi, lo + (mid - lo) / AUTO_SUBJECT_MID), 1.0)
-    hi = max(hi, lo + 0.05)
+    hi = max(float(np.percentile(g, AUTO_WHITE_PERCENTILE)), lo + 0.05)
     return {"brightness": 0.0, "contrast": 0.0, "gamma": 1.0,
-            "black_point": round(lo, 3), "white_point": round(hi, 3),
-            "clahe_clip": 0.0, "edge_strength": 0.0}
+            "black_point": round(lo, 3), "white_point": round(min(hi, 1.0), 3),
+            "clahe_clip": 0.0, "edge_strength": 0.0, "white_level": AUTO_WHITE_LEVEL}
 
 
 def remove_background(rgb: np.ndarray) -> np.ndarray | None:

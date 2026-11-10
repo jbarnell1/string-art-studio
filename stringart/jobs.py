@@ -210,7 +210,7 @@ class JobManager:
         return palette_order(colors, board.invert)
 
     def auto_tone(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int = 600) -> dict[str, float]:
-        """Auto tone (ADR-022) for the project's photo in the current frame, faces as the subject."""
+        """Auto tone (ADR-022, ADR-023) for the project's photo in the current frame."""
         files = self.files(project_id)
         src = files.source
         if src is None:
@@ -219,13 +219,7 @@ class JobManager:
         alpha = self.subject_alpha(project_id, rgb, compute=prep.background_removal) if prep.background_removal else None
         if alpha is not None:
             rgb = apply_subject_alpha(rgb, alpha, fill_white=not board.invert)
-        framed = frame_source(rgb, prep, res)
-        subject = None
-        info = self.faces(project_id)
-        if info["faces"]:
-            imp = auto_importance(info["faces"], prep, info["width"], info["height"], res, 1.0)
-            subject = imp > 0.6 if imp is not None else None
-        return auto_tone(framed, prep, board, subject)
+        return auto_tone(frame_source(rgb, prep, res), prep, board)
 
     def build_weight(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int,
                      gray: np.ndarray | None = None) -> np.ndarray:

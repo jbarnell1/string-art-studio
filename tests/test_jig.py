@@ -60,3 +60,13 @@ def test_zip_contents_and_stl_header(board):
     assert len(stl) == 84 + 50 * count and count > 1000
     readme = zf.read("README.txt").decode("utf-8")
     assert "no skirt" in readme and "14 mm deep" in readme
+
+
+def test_segment_letter_faces_up_in_the_slicer(board):
+    """The face that lies on the board goes up on the bed, so it carries the segment's letter."""
+    s = jig.JigSettings(bed_mm=225.0)
+    g = jig.segment_groups(board, s.bed_mm, s)[1]
+    m = jig.segment_solid(board, g, s)
+    assert m.slice(0.3).area() < m.slice(3.0).area() - 20.0     # letter cut into the board side
+    data = jig.jig_zip(board, s)
+    assert zipfile.ZipFile(io.BytesIO(data)).read("guide_B.stl")[:80].rstrip() == b"String Art Studio guide B"

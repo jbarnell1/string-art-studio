@@ -205,6 +205,11 @@ def segment_solid(board: BoardConfig, group: dict[str, Any], s: JigSettings) -> 
     centre = _polar(rad["key_rc"], phim)
     text = _cs(_place(_text(label, 5.0), centre, xaxis, yaxis))
     solid = solid - text.extrude(1.2).translate([0, 0, s.plate_mm - 0.7])
+    # The same letter, large, in the face that lies on the board. That face points up on the
+    # print bed, so the slicer shows which segment is which. The x axis is reversed so the letter
+    # reads correctly once the part is turned over.
+    big = _cs(_place(_text(group["label"], 12.0), centre, _tangent(phim), yaxis))
+    solid = solid - big.extrude(1.2).translate([0, 0, -0.6])
     return solid
 
 
@@ -241,7 +246,7 @@ def hole_test(bit_mm: float) -> tuple[Manifold, list[float]]:
     return m, clearances
 
 
-def stl_bytes(m: Manifold) -> bytes:
+def stl_bytes(m: Manifold, name: str = "jig") -> bytes:
     mesh = m.to_mesh()
     v = np.asarray(mesh.vert_properties, dtype=np.float32)[:, :3]
     t = np.asarray(mesh.tri_verts, dtype=np.int64)
@@ -249,7 +254,7 @@ def stl_bytes(m: Manifold) -> bytes:
     nrm = np.cross(b - a, c - a)
     nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-12)
     out = io.BytesIO()
-    out.write(b"String Art Studio jig".ljust(80, b" "))
+    out.write(f"String Art Studio {name}".encode("ascii", "replace")[:80].ljust(80, b" "))
     out.write(struct.pack("<I", len(t)))
     rec = np.zeros(len(t), dtype=[("n", "<f4", 3), ("a", "<f4", 3), ("b", "<f4", 3), ("c", "<f4", 3), ("attr", "<u2")])
     rec["n"], rec["a"], rec["b"], rec["c"] = nrm, a, b, c
@@ -272,7 +277,8 @@ Print (PLA is fine: the jig only guides the drill, it never carries thread):
    tenths of a millimetre. If it is not 2, change "Guide hole clearance" on the results page to that
    number divided by 10 and download the jig again. This guide was made with {clear:.1f} mm.
 2. Print the segments: {segments}.
-   Each is debossed with its letter and the pins it holds.
+   Each has a large letter on the side facing up in the slicer (the side that lies on the board),
+   and its letter and pin range on the side that prints on the bed.
 3. Lay them on the board's face clockwise as seen from the front, starting with A at twelve o'clock
    (pin 0). {skirt_line} Each segment's dovetail locks into the next. Tape or clamp the ring
    down so it cannot move.
@@ -292,7 +298,7 @@ def jig_zip(board: BoardConfig, settings: JigSettings | None = None, embed_mm: f
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for g in groups:
-            zf.writestr(f"guide_{g['label']}.stl", stl_bytes(for_print(segment_solid(board, g, s), s.bed_mm)))
+            zf.writestr(f"guide_{g['label']}.stl", stl_bytes(for_print(segment_solid(board, g, s), s.bed_mm), f"guide {g['label']}"))
         zf.writestr(f"height_gauge_{s.gauge_height_mm:.0f}mm.stl", stl_bytes(for_print_upright(height_gauge(s.gauge_height_mm), s.bed_mm)))
         test, _ = hole_test(s.bit_mm)
         zf.writestr("hole_test.stl", stl_bytes(for_print_upright(test, s.bed_mm)))

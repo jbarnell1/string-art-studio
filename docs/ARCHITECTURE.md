@@ -109,7 +109,6 @@ All under `/api`. `GET /api/docs` is the live OpenAPI page.
 | `GET /projects/{id}/faces` | Detected faces (normalised source coordinates) and a suggested frame |
 | `POST /projects/{id}/palette` | The thread colours a run would use (build order, names) for given prep and board |
 | `POST /projects/{id}/weightmap` | The importance weights as a PNG overlay (red more, blue less) |
-| `POST /projects/{id}/auto-tone` | Auto tone for the photo and frame in the body: levels from its percentiles (ADR-022) |
 | `POST /projects/{id}/runs` | Start engine a, b or both (both share a group_id) |
 | `GET /runs/{id}`, `GET .../events` (SSE), `POST .../cancel`, `PATCH`, `DELETE` | Run status and control |
 | `GET /runs/{id}/{live.jpg,render.png,target.jpg,compare.jpg?blur=1}` | Pictures |

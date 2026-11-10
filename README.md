@@ -10,7 +10,7 @@ template and laser or CNC files, then string the piece from your phone with huge
 ## What it does
 
 - Image editor with crop, zoom and rotation inside the frame, brightness, contrast, gamma, black and
-  white points, local contrast (CLAHE), channel mix, edge emphasis, a brightest-white ceiling so highlights stay hatched, tone presets with an Auto tone fitted to each photo, a painted importance
+  white points, local contrast (CLAHE), channel mix, edge emphasis, a brightest-white ceiling so highlights stay hatched, tone presets, a painted importance
   mask (eyes and mouth count more), a viewing-distance preview and optional local background removal.
 - Portrait help: faces are detected locally (OpenCV YuNet, bundled), one button frames the face so
   it fills the circle, faces and their features are weighed up automatically, edges count more so

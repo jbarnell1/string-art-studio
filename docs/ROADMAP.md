@@ -87,10 +87,10 @@ busiest pin's wraps, and the spools per colour (ADR-020).
 A 3D-printable drilling jig for the pin ring, a pin height block and a hole-fit test strip, from the
 results page (ADR-021).
 
-## v3 part seven, auto tone (built 2026-11-09)
+## v3 part seven, brightest white (built 2026-11-09)
 
-An Auto chip in the studio fits black and white points to the photo and frame (ADR-022), and a
-Brightest white setting (default 0.8) keeps highlights and faces evenly hatched (ADR-023).
+A Brightest white setting (default 0.8) keeps highlights and faces evenly hatched (ADR-023). Auto
+tone was tried and withdrawn: Soft levels with the ceiling looked better (ADR-022, ADR-024).
 
 ## Later
 

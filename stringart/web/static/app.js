@@ -244,9 +244,9 @@
     { group: "mix", key: "mix_b", label: "Blue weight", min: 0, max: 1, step: 0.01 },
   ];
   const PREP_PRESETS = {
+    "Soft": { brightness: 0, contrast: 0, gamma: 1.0, black_point: 0.0, white_point: 1.0, white_level: 0.8, clahe_clip: 0, edge_strength: 0, face_emphasis: 1.0, structure_weight: 0.5 },
     "Portrait": { gamma: 1.0, black_point: 0.03, white_point: 0.9, clahe_clip: 0.6, edge_strength: 0.3, contrast: 0.05, white_level: 0.8, face_emphasis: 1.0, structure_weight: 0.5 },
     "High key": { gamma: 0.9, black_point: 0.02, white_point: 0.8, clahe_clip: 0.5, edge_strength: 0.5, white_level: 0.9, face_emphasis: 1.0, structure_weight: 0.4 },
-    "Soft": { gamma: 1.0, black_point: 0.0, white_point: 1.0, clahe_clip: 0, edge_strength: 0, contrast: 0, white_level: 0.8, face_emphasis: 0.5, structure_weight: 0 },
     "Pet": { gamma: 1.0, black_point: 0.04, white_point: 0.92, clahe_clip: 1.2, edge_strength: 0.6, edge_radius: 1.5, white_level: 0.8, face_emphasis: 0, structure_weight: 0.7 },
   };
 
@@ -666,21 +666,6 @@
     // Photo: crop, zoom, rotate and tone presets.
     const cropBody = el("div", {}, [
       el("div", { class: "chips", style: "margin-bottom:14px" }, [
-        el("button", { class: "chip", type: "button", title: "Fit the levels to this photo: the darkest 1% goes black, the lightest becomes a light grey so highlights keep an even hatching, and faces stay in greys", disabled: !project.has_image, onclick: async (ev) => {
-          const btn = ev.currentTarget;
-          btn.disabled = true;
-          try {
-            const res = await api.post(`api/projects/${pid}/auto-tone`, { prep, board });
-            Object.assign(prep, res.prep);
-            Object.keys(res.prep).forEach(syncField);
-            changed();
-            toast(`Auto tone: black ${fmt.fixed(res.prep.black_point, 2)}, white ${fmt.fixed(res.prep.white_point, 2)}`);
-          } catch (err) {
-            toast("Auto tone failed: " + err.message);
-          } finally {
-            btn.disabled = false;
-          }
-        } }, "Auto"),
         ...Object.keys(PREP_PRESETS).map((name) => el("button", { class: "chip", type: "button", onclick: () => { Object.assign(prep, PREP_PRESETS[name]); Object.keys(PREP_PRESETS[name]).forEach(syncField); changed(); } }, name)),
       ]),
       rangeField(prep, { key: "crop_size", label: "Zoom (frame size)", min: 0.05, max: 3, step: 0.01, reset: 1, format: (v) => fmt.fixed(v, 2) }, changed),

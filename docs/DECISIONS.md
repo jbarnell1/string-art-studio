@@ -4,6 +4,17 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-024 - Auto tone is withdrawn; Soft with brightest white 0.8 is the default look
+**2026-11-09.** Shown side by side on five photos, the owner judged Soft levels (the photo unchanged)
+with the brightest white at 0.8, or 0.75, best by far, ahead of ADR-023's Auto stretch. That matches
+the numbers: no levels stretch ever beat the unchanged photo on accuracy, and the ceiling alone
+carries the detail gain. A button that does worse than the default is removed rather than kept, so
+the Auto chip, `prep.auto_tone` and `POST /api/projects/{id}/auto-tone` are gone. The defaults for a
+new project already are the look the owner picked (black 0, white 1, gamma 1, no CLAHE or edge
+emphasis, brightest white 0.8, face emphasis 1, structure weight 0.5). The Soft chip now sets exactly
+those and comes first; before, it set face emphasis 0.5 and structure weight 0, which is not what
+the comparison showed. Users who want a darker, denser face drag Brightest white to 0.75.
+
 ### ADR-023 - The brightest white is a light grey (0.8), and Auto tone stretches to it
 **2026-11-09.** Side by side, ADR-022's Auto left cheeks and foreheads paler and barer than Soft.
 The owner named the cause: a light area crossed by a few stray threads reads as a hole, and the eye

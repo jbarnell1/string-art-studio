@@ -399,18 +399,6 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
             raise HTTPException(404, "no image") from None
         return Response(preview_jpeg(img), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
-    @app.post("/api/projects/{pid}/auto-tone")
-    def auto_tone_settings(pid: str, body: PreviewIn, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
-        """Tone settings fitted to this photo and frame (ADR-022): the Auto preset."""
-        _project_or_404(ctx, pid)
-        prep = PrepSettings.from_dict(body.prep)
-        board = BoardConfig.from_dict(body.board)
-        try:
-            tone = ctx.jobs.auto_tone(pid, prep, board)
-        except FileNotFoundError:
-            raise HTTPException(404, "no image") from None
-        return {"prep": dict(tone, face_emphasis=1.0, structure_weight=0.5)}
-
     @app.post("/api/projects/{pid}/palette")
     def resolve_palette(pid: str, body: PreviewIn, ctx: Context = Depends(get_ctx)) -> dict[str, Any]:
         """The thread colours a run with these settings would use, in build order, with names."""

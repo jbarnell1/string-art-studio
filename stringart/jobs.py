@@ -28,8 +28,8 @@ from stringart.exports.sequence import layers_thread_estimate
 from stringart.engine.setcover import run_setcover
 from stringart.engine.state import EngineParams, RenderState
 from stringart.faces import auto_importance, detect_faces, portrait_frame
-from stringart.prep import (PrepSettings, board_weight, decode_mask_png, load_source, prepare_target,
-                            prepare_target_rgb, remove_background)
+from stringart.prep import (PrepSettings, apply_subject_alpha, auto_tone, board_weight, decode_mask_png, frame_source,
+                            load_source, prepare_target, prepare_target_rgb, remove_background)
 
 log = logging.getLogger("stringart.jobs")
 
@@ -208,6 +208,24 @@ class JobManager:
         else:
             colors = list(board.palette)
         return palette_order(colors, board.invert)
+
+    def auto_tone(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int = 600) -> dict[str, float]:
+        """Auto tone (ADR-022) for the project's photo in the current frame, faces as the subject."""
+        files = self.files(project_id)
+        src = files.source
+        if src is None:
+            raise FileNotFoundError("project has no image")
+        rgb = self.images.get(src)
+        alpha = self.subject_alpha(project_id, rgb, compute=prep.background_removal) if prep.background_removal else None
+        if alpha is not None:
+            rgb = apply_subject_alpha(rgb, alpha, fill_white=not board.invert)
+        framed = frame_source(rgb, prep, res)
+        subject = None
+        info = self.faces(project_id)
+        if info["faces"]:
+            imp = auto_importance(info["faces"], prep, info["width"], info["height"], res, 1.0)
+            subject = imp > 0.6 if imp is not None else None
+        return auto_tone(framed, prep, board, subject)
 
     def build_weight(self, project_id: str, prep: PrepSettings, board: BoardConfig, res: int,
                      gray: np.ndarray | None = None) -> np.ndarray:

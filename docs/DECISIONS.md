@@ -4,6 +4,27 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-022 - Auto tone: levels from the photo's own percentiles, with a light face kept in greys
+**2026-11-09.** The owner's plan of a girl on a dark background came out pale and featureless next to
+a kit maker's. The cause was tone, not the engine: white point 0.8 with edge emphasis and CLAHE
+turned her skin white, and a thread can only darken, so the engine left it bare. The owner asked for
+a button that fits the levels to each photo: whites that pop, most of the picture in greys, a final
+drop to black. A sweep picked the rule. Each candidate toned five photos (the owner's, four
+samples), generated a plan on the owner's board (18 inch round, 220 pins, 0.25 mm Tex 45 thread)
+and scored the render against the untouched photo, not against the toned target (SSIM at 1.5 m and
+0.75 m, mid-band detail correlation, lightness range). Findings: forcing the median to a set grey
+with gamma failed on a dark photo (gamma 3 washed it out); CLAHE, edge emphasis and a face-median
+gamma all scored lower; a plain stretch with gamma 1 scored best and beat the Portrait and High key
+presets on every measure. Soft (the photo unchanged) stays the most faithful, as it must when the
+yardstick is the photo; the chosen stretch widens the lightness range by about 10% at the same
+reading-distance SSIM. The averages hid one failure, seen at full size on the owner's photo: the
+95th percentile was skin, so the face stretched to near white and went bare. The fix caps the
+subject: the white point rises until the faces' middle tone (the whole board's without faces) ends
+at or below 70% lightness. The rule (`prep.auto_tone`, `POST /api/projects/{id}/auto-tone`, the
+Auto chip in Photo and frame): black point at the 1st percentile inside the pin ring, white point
+at the 95th or the subject cap, gamma 1, no CLAHE or edge emphasis, face emphasis 1 and structure
+weight 0.5. It is computed for the current frame, so press it again after reframing.
+
 ### ADR-021 - A 3D-printable drilling jig; pins are glued into drilled holes, not hammered
 **2026-11-05.** The owner worried that a hammered brad that works loose would ruin a build hours in,
 and has a 3D printer (Elegoo Neptune 4 Pro, 225 mm bed). The thread loads every pin sideways towards

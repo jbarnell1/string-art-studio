@@ -87,6 +87,11 @@ busiest pin's wraps, and the spools per colour (ADR-020).
 A 3D-printable drilling jig for the pin ring, a pin height block and a hole-fit test strip, from the
 results page (ADR-021).
 
+## v3 part seven, auto tone (built 2026-11-09)
+
+An Auto chip in the studio fits black and white points to the photo and frame, keeping faces in
+greys (ADR-022).
+
 ## Later
 
 - Square and rectangular frames; printable thread-width test pattern; minimum-weight matching in

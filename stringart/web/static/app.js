@@ -664,7 +664,24 @@
 
     // Photo: crop, zoom, rotate and tone presets.
     const cropBody = el("div", {}, [
-      el("div", { class: "chips", style: "margin-bottom:14px" }, Object.keys(PREP_PRESETS).map((name) => el("button", { class: "chip", type: "button", onclick: () => { Object.assign(prep, PREP_PRESETS[name]); Object.keys(PREP_PRESETS[name]).forEach(syncField); changed(); } }, name))),
+      el("div", { class: "chips", style: "margin-bottom:14px" }, [
+        el("button", { class: "chip", type: "button", title: "Fit black and white to this photo: the darkest 1% goes black, the brightest 5% white, and faces stay in greys", disabled: !project.has_image, onclick: async (ev) => {
+          const btn = ev.currentTarget;
+          btn.disabled = true;
+          try {
+            const res = await api.post(`api/projects/${pid}/auto-tone`, { prep, board });
+            Object.assign(prep, res.prep);
+            Object.keys(res.prep).forEach(syncField);
+            changed();
+            toast(`Auto tone: black ${fmt.fixed(res.prep.black_point, 2)}, white ${fmt.fixed(res.prep.white_point, 2)}`);
+          } catch (err) {
+            toast("Auto tone failed: " + err.message);
+          } finally {
+            btn.disabled = false;
+          }
+        } }, "Auto"),
+        ...Object.keys(PREP_PRESETS).map((name) => el("button", { class: "chip", type: "button", onclick: () => { Object.assign(prep, PREP_PRESETS[name]); Object.keys(PREP_PRESETS[name]).forEach(syncField); changed(); } }, name)),
+      ]),
       rangeField(prep, { key: "crop_size", label: "Zoom (frame size)", min: 0.05, max: 3, step: 0.01, reset: 1, format: (v) => fmt.fixed(v, 2) }, changed),
       el("div", { class: "row2" }, [
         rangeField(prep, { key: "crop_cx", label: "Centre X", min: 0, max: 1, step: 0.001, reset: 0.5, format: (v) => fmt.fixed(v, 3) }, changed),

@@ -58,6 +58,11 @@ def test_full_flow(client: TestClient):
     r = client.post(f"/api/projects/{pid}/preview", json={"prep": {"gamma": 0.8}, "board": {}, "size": 256})
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
 
+    r = client.post(f"/api/projects/{pid}/auto-tone", json={"prep": {"gamma": 0.8, "clahe_clip": 1.0}, "board": {}})
+    tone = r.json()["prep"]
+    assert r.status_code == 200 and tone["gamma"] == 1.0 and tone["clahe_clip"] == 0.0
+    assert 0.0 <= tone["black_point"] < tone["white_point"] <= 1.0
+
     mask = Image.new("L", (64, 64), 128)
     buf = io.BytesIO()
     mask.save(buf, format="PNG")

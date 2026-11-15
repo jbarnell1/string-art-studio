@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work the way the docs or the screen say it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please do not attach photos of people who have not agreed to it;
+        the files in `samples/` are there so bugs can be reproduced with a shared picture.
+        For a security problem use the Security tab instead of a public issue.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Upload samples/portrait-man.jpg
+        2. Set pins to 300
+        3. Press Generate
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Image editor and preview
+        - Generation (engine A, engine B, colour)
+        - Results and build estimate
+        - Exports (template PDF, SVG, DXF, sequence, bundle)
+        - Drilling jig
+        - Build mode and voice
+        - Install, Docker, configuration
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown at the bottom of the sidebar, or the commit you built from.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: How you run it
+      placeholder: Docker Compose on Debian 12, Chrome on Android, behind Tailscale Serve under /stringart
+  - type: textarea
+    id: settings
+    attributes:
+      label: Board and engine settings
+      description: Diameter, pin count, maximum lines, palette, anything changed from the defaults.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `docker compose logs --tail=100`, with anything private removed.
+      render: text

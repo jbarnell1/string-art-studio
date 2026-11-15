@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Callable
 
 import cv2
@@ -38,7 +38,7 @@ import numpy as np
 from stringart.board import BoardConfig
 from stringart.engine.kernels import score_add
 from stringart.engine.render import relative_luminance
-from stringart.raster import PAD_INDEX, bbox_of, sample_lines, step_factor
+from stringart.raster import bbox_of, sample_lines, step_factor
 
 cv2.setNumThreads(2)
 

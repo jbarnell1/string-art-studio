@@ -4,8 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 from stringart.board import BoardConfig
-from stringart.engine.color import (ColorState, auto_palette, color_name, palette_order, rgb_to_lab,
-                                    run_color_greedy)
+from stringart.engine.color import ColorState, auto_palette, color_name, palette_order, rgb_to_lab, run_color_greedy
 from stringart.engine.render import render_layers_rgb, render_rgb
 from stringart.engine.state import EngineParams
 from stringart.prep import board_weight

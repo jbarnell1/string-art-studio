@@ -4,6 +4,21 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-025 - A public repo: CI on every push, a lockfile, and no household values in the tree
+**2026-11-14.** Before the repo was shared it got the checks a stranger expects. GitHub Actions
+runs ruff, the tests and a Docker build that must answer its health check, and gitleaks scans the
+whole history for secrets, on every push and pull request. Dependencies are locked in `uv.lock`
+so CI and `uv run` resolve the same versions; `pip install -e .` keeps working from
+`pyproject.toml`. Ruff's rule set is pinned (`E4`, `E7`, `E9`, `F`, `I`, without `E741`, because
+the engine code uses the maths names `I` and `l`) so a ruff upgrade cannot change what CI checks;
+the first run only sorted imports and removed five unused imports and one unused variable. The deploy scripts, the runbook
+and `.env.example` now carry placeholders instead of the first install's host names, tailnet name
+and address (they remain in the git history, which was not rewritten), `.env.example` no longer
+sets a path prefix or the voice profile by default, so copying it gives a working local install,
+and README screenshots come only from a throwaway instance running the sample photos
+(`docs/screenshots/CREDITS.md`). The app still loads its font from Google Fonts in the browser;
+the README says so under "What leaves your server", and bundling the font is left as a later choice.
+
 ### ADR-024 - Auto tone is withdrawn; Soft with brightest white 0.8 is the default look
 **2026-11-09.** Shown side by side on five photos, the owner judged Soft levels (the photo unchanged)
 with the brightest white at 0.8, or 0.75, best by far, ahead of ADR-023's Auto stretch. That matches
@@ -216,14 +231,14 @@ the number suggests because the error is dominated by the hair mass. Detection n
 server and is cached beside the photo in `faces.json`.
 
 ### ADR-010 - Deploy on the media PC under /stringart, port 8050
-**2026-11-05.** The owner asked for this app to run on the media PC (desktop-4l95il9), not jon-desktop.
-Port 8040 there is taken by Highlights, so the container binds 127.0.0.1:8050. It is published by
-Tailscale Serve as a path on the existing host (`/stringart`), beside Immich at `/` and Highlights at
-`/highlights`, because Android treats every PWA on one host as the same app unless each has its own
-path scope (the homelab rule learned with Doc Keeper and Night Shift). The app reads
+**2026-11-05.** The owner asked for this app to run on the household's media PC, not the desktop.
+Port 8040 there is taken by another app, so the container binds 127.0.0.1:8050. It is published by
+Tailscale Serve as a path on the existing host (`/stringart`), beside the apps already served
+there, because Android treats every PWA on one host as the same app unless each has its own
+path scope (a rule learned with earlier apps). The app reads
 `SAS_ROOT_PATH=/stringart` so the manifest scope, start URL and every link carry the prefix while the
-routes stay at the root (Tailscale strips the prefix). Data is a bind mount at
-`C:\homelab\string-art-studio\data`, inside the folder Backrest already backs up.
+routes stay at the root (Tailscale strips the prefix). Data is a bind mount at `./data` in the
+checkout, inside a folder the host's backup job already covers.
 
 ### ADR-009 - MIT licence, fictional sample photos
 **2026-11-05.** The brief asked "MIT or similar"; MIT is the least friction for a hobby tool others

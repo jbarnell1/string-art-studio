@@ -1,0 +1,33 @@
+name: Feature request
+description: An idea that would make a build easier or a result better
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/ROADMAP.md](https://github.com/jbarnell1/string-art-studio/blob/main/docs/ROADMAP.md)
+        first: it lists what is planned and what was tried and dropped.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The situation at the board or on the screen, not the solution yet.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Taking part
+      options:
+        - label: I could try this on a real board and report back
+        - label: I could open a pull request for it

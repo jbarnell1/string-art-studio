@@ -6,11 +6,10 @@ that base."""
 from __future__ import annotations
 
 import json
-import math
 import logging
-from contextlib import asynccontextmanager
+import math
 import queue
-import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -20,22 +19,21 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from stringart import __version__
-from stringart.board import BoardConfig, thread_estimate
+from stringart import faces as faces_mod
+from stringart.board import BoardConfig
 from stringart.config import Settings, load_settings
 from stringart.db import Database, new_id
+from stringart.engine.color import PALETTE_PRESETS, color_name
 from stringart.engine.state import EngineParams
+from stringart.estimate import build_estimate
 from stringart.exports import bundle as bundle_mod
 from stringart.exports import fab as fab_mod
+from stringart.exports import jig as jig_mod
 from stringart.exports import sequence as seq_mod
 from stringart.exports import template_pdf
-from stringart import faces as faces_mod
 from stringart.jobs import JobManager
+from stringart.prep import PrepSettings, background_removal_available, encode_source_jpeg, load_source, preview_jpeg
 from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, change_phrase, pin_phrase
-from stringart.engine.color import PALETTE_PRESETS, color_name
-from stringart.estimate import build_estimate
-from stringart.exports import jig as jig_mod
-from stringart.prep import (PrepSettings, background_removal_available, encode_source_jpeg, load_source,
-                            preview_jpeg)
 
 log = logging.getLogger("stringart.web")
 STATIC = Path(__file__).parent / "static"

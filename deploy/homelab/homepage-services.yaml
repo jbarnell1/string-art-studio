@@ -1,8 +1,8 @@
-# Snippet for the Homepage dashboard on jon-desktop (C:\pwa-autostart\homepage\config\services.yaml),
-# under the "Creator tools" group (Creator tab). Icon file: deploy/homelab/string-art-studio.png
-# copied to C:\pwa-autostart\homepage\images\icons\string-art-studio.png.
+# Example tile for a Homepage dashboard (https://gethomepage.dev): paste it under a group in
+# services.yaml and replace the host with your own. The icon is stringart/web/static/icons/icon-192.png,
+# copied into Homepage's images/icons folder as string-art-studio.png.
     - String Art Studio:
         icon: /images/icons/string-art-studio.png
-        href: https://desktop-4l95il9.taildc59f0.ts.net/stringart/
+        href: https://studio.example.com/stringart/
         description: Photo to pin-and-thread build plan
-        siteMonitor: https://desktop-4l95il9.taildc59f0.ts.net/stringart/healthz
+        siteMonitor: https://studio.example.com/stringart/healthz

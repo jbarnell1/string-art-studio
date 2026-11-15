@@ -1,0 +1,7 @@
+# gitleaks configuration: the default rules. Add an allowlist only after checking a finding is a
+# false positive; a real secret is rotated, never allowlisted.
+
+title = "String Art Studio"
+
+[extend]
+useDefault = true

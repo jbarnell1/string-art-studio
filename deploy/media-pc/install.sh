@@ -1,29 +1,31 @@
 #!/usr/bin/env bash
-# Install or update String Art Studio on the media PC (homelab WSL distro, Docker under systemd).
-# Run inside WSL:  bash /mnt/c/homelab/string-art-studio/deploy/media-pc/install.sh
+# Example: install or update String Art Studio on a home server that runs Docker (written for a
+# Windows PC with Docker inside WSL, works on any Linux host). Run it from the checkout:
 #
-# The checkout lives at /mnt/c/homelab/string-art-studio (C:\homelab\string-art-studio), next to
-# the other apps. Data stays in ./data inside it, which Backrest already covers through C:\homelab.
-# The container binds 127.0.0.1:8050; Tailscale Serve (owner step, see tailscale-serve.ps1)
-# publishes it at https://desktop-4l95il9.taildc59f0.ts.net/stringart.
+#   bash deploy/media-pc/install.sh
+#
+# Data stays in ./data inside the checkout, so back that folder up. The container binds
+# 127.0.0.1:8050; Tailscale Serve (see tailscale-serve.ps1) publishes it on the tailnet at
+# https://<host>.<tailnet>.ts.net/stringart. Set SAS_ROOT_PATH to another prefix, or to nothing,
+# in .env if you publish it differently.
 set -euo pipefail
-APP=/mnt/c/homelab/string-art-studio
+APP="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$APP"
 if [ ! -f .env ]; then
-    cat > .env <<'ENV'
+    cat > .env <<ENV
 SAS_ROOT_PATH=/stringart
 SAS_BIND=127.0.0.1
 SAS_PORT=8050
 SAS_DATA=./data
 SAS_WORKERS=2
-TZ=America/Chicago
+TZ=${TZ:-UTC}
 COMPOSE_PROFILES=voice
 SAS_PIPER_URL=http://piper:5000
 SAS_PIPER_VOICE=en_US-lessac-medium
 ENV
     echo "wrote .env"
 fi
-# v2 added the Piper voice container; older .env files get the two lines that switch it on.
+# v2 added the Piper voice container; older .env files get the lines that switch it on.
 if ! grep -q '^SAS_PIPER_URL=' .env; then
     printf 'COMPOSE_PROFILES=voice\nSAS_PIPER_URL=http://piper:5000\nSAS_PIPER_VOICE=en_US-lessac-medium\n' >> .env
     echo "enabled the voice profile in .env"

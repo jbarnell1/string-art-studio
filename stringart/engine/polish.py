@@ -140,7 +140,6 @@ def _r1(state: RenderState, i: int, j: int) -> float:
 
 
 def _verify_replace(state: RenderState, seq: list[int], i: int, ok: np.ndarray, eps: float) -> bool:
-    board = state.board
     p1, p2, p3 = seq[i - 1], seq[i], seq[i + 1]
     r1 = _r1(state, p1, p2)
     state.remove_line(p1, p2)

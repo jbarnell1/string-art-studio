@@ -4,6 +4,22 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-026 - The font is bundled; the browser talks only to the app
+**2026-11-15.** ADR-025 left the web font on Google Fonts, which made every browser that opened
+the app contact `fonts.googleapis.com` and `fonts.gstatic.com`. For a self-hosted app that says
+nothing leaves the server, that was the one exception, so the font now ships with the app. The
+three weights the CSS uses (IBM Plex Sans 400, 500 and 600, upright only; nothing in the UI is
+italic or monospaced) come unmodified from the `@ibm/plex-sans` 1.1.0 npm package as upstream's
+Latin-1 WOFF2 split files, about 21 to 22 KB each (65 KB in all), in `stringart/web/static/fonts/`
+with the SIL OFL 1.1 text beside them. `app.css` declares them with `font-display: swap` and
+upstream's Latin-1 `unicode-range`; other scripts fall back to the system font. `index.html`
+preloads the regular weight, the service worker caches all three for offline use (its cache
+version is bumped so old caches are dropped), and they ship in the Docker image and the wheel
+through the existing `web/static/**/*` package data; the app registers the `font/woff2` type so the
+slim image does not serve them as `application/octet-stream`. A test fails if either Google Fonts host
+appears in any shipped static file or template. `docs/THIRD_PARTY.md` lists the bundled font and
+face model with their sources and licenses.
+
 ### ADR-025 - A public repo: CI on every push, a lockfile, and no household values in the tree
 **2026-11-14.** Before the repo was shared it got the checks a stranger expects. GitHub Actions
 runs ruff, the tests and a Docker build that must answer its health check, and gitleaks scans the

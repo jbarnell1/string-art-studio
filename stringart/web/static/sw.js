@@ -2,11 +2,14 @@
 // (pages, API, images) goes network first so a build in progress never shows stale data.
 // Works at the root or under a path prefix: BASE is derived from where this file is served.
 const BASE = self.location.pathname.replace(/\/sw\.js$/, "");
-const VERSION = "sas-v1";
+const VERSION = "sas-v2";
 const SHELL = [
   `${BASE}/`,
   `${BASE}/static/app.css`,
   `${BASE}/static/app.js`,
+  `${BASE}/static/fonts/IBMPlexSans-Regular-Latin1.woff2`,
+  `${BASE}/static/fonts/IBMPlexSans-Medium-Latin1.woff2`,
+  `${BASE}/static/fonts/IBMPlexSans-SemiBold-Latin1.woff2`,
   `${BASE}/static/icons/icon-192.png`,
   `${BASE}/static/icons/icon-512.png`,
   `${BASE}/manifest.webmanifest`,

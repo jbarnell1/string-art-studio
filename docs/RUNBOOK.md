@@ -5,7 +5,7 @@
 ```bash
 git clone https://github.com/jbarnell1/string-art-studio.git
 cd string-art-studio
-cp .env.example .env     # optional
+cp .env.example .env     # optional: port, data folder, path prefix, voice
 docker compose up -d --build
 open http://127.0.0.1:8050
 ```
@@ -60,32 +60,34 @@ string-art-studio generate photo.jpg --out plan --engine a --pins 240 --lines 80
 | `SAS_RENDER_RES` | `1600` | Final render size in px |
 | `SAS_PREVIEW_RES` | `640` | Editor preview size |
 
-## The Barnell homelab install (media PC)
+## Example: a home server behind Tailscale Serve
 
-Checkout: `C:\homelab\string-art-studio` (`/mnt/c/homelab/string-art-studio` in the `homelab` WSL
-distro). Container `string-art-studio` on 127.0.0.1:8050. Data in `./data` (covered by Backrest
-through `C:\homelab`).
+The first install runs this way: a small always-on PC with Docker, the app bound to loopback, and
+Tailscale Serve publishing it to the household's devices under a path. The scripts in `deploy/` are
+that install with the household's values replaced by placeholders.
 
-Install or update, from jon-desktop:
+Install or update, on the server (or over SSH: `ssh user@your-server 'cd string-art-studio && git pull && bash deploy/media-pc/install.sh'`):
 
 ```bash
-ssh homelab@100.101.123.33 'wsl -d homelab -- bash -lc "cd /mnt/c/homelab/string-art-studio && git pull && bash deploy/media-pc/install.sh"'
+git pull
+bash deploy/media-pc/install.sh
 ```
 
-Tailscale serve was set on 2026-11-05 (`deploy/media-pc/tailscale-serve.ps1` holds the command; it
-ran fine over SSH as `homelab`, no elevation needed on that box). Result:
-`https://desktop-4l95il9.taildc59f0.ts.net/stringart/`.
+The script writes a `.env` on first run (path prefix `/stringart`, loopback port 8050, the voice
+profile on), builds, starts the containers and waits for the health check.
 
-Owner step, once: Gatus. Paste `deploy/homelab/gatus-endpoint.yaml` into
-`/mnt/c/homelab/monitoring/gatus.yaml` and restart the monitoring stack.
+Publish it on the tailnet, once: `deploy/media-pc/tailscale-serve.ps1` holds the command
+(`tailscale serve --bg --set-path /stringart http://127.0.0.1:8050`). The app is then at
+`https://<host>.<tailnet>.ts.net/stringart/`. Each app on one host needs its own path, because
+Android treats every PWA on one host name as the same app unless each has its own scope.
 
-The Homepage tile on jon-desktop is in `C:\pwa-autostart\homepage\config\services.yaml` (Creator
-tools) with the icon in `images/icons/string-art-studio.png` (added 2026-11-05).
+Optional: `deploy/homelab/gatus-endpoint.yaml` is a health check for a Gatus monitor and
+`deploy/homelab/homepage-services.yaml` a tile for a Homepage dashboard.
 
 Logs: `docker compose logs -f` in the checkout. Health: `curl http://127.0.0.1:8050/healthz`.
 
-Weekly auto-update: add `string-art-studio` to the loop in `/mnt/c/homelab/update-containers.sh`
-(it is built from source, so use the same `git fetch` pattern as Watchman).
+Updates: the image is built from source, so an update is `git pull && docker compose up -d --build`
+(the install script does both steps after the pull). Put that in a weekly job if you want it automatic.
 
 ## Backups and restore
 
@@ -108,7 +110,7 @@ can also travel as a bundle ZIP from the results page.
 
 Pick a palette in the Board panel (or Auto to take colours from the photo); the preview turns to
 colour and the swatches show the build order, lightest first. Colour plans run on engine A and take
-about twice as long as a single thread (about one minute for 4,000 lines on a desktop, two on the media PC).
+about twice as long as a single thread (about one minute for 4,000 lines on a desktop, two on an older four core PC).
 Colour plans are line-hungry (each colour needs its own coverage): on the colour sample the error
 was 0.254 at 4,000 lines and 0.197 at 6,000, which is why the default ceiling is now 8,000; budget the thread
 accordingly. More search time changes nothing; both engines converge inside the default budget.

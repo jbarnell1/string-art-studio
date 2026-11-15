@@ -6,8 +6,8 @@ Read this first every session.
 A self-hosted web app that turns a photo into a pin-and-thread build plan: an image editor and board
 settings on one page with a live preview, two generation engines with side-by-side comparison, true-size
 pin templates and SVG/DXF fab files, and a phone-first build mode. Python (FastAPI + numpy/OpenCV) with
-a vanilla-JS PWA, one container. MIT. Public repo intended; the first install is the Barnell homelab
-(media PC, desktop-4l95il9) but nothing homelab-specific is in the code.
+a vanilla-JS PWA, one container. MIT. The repo is public: the first install is the owner's home server, but nothing
+specific to that household belongs in the code, the docs or the screenshots (placeholders only).
 
 ## Canonical documents (link to these, never duplicate them)
 | Topic | Source of truth |
@@ -39,12 +39,13 @@ stringart/
   cli.py          `string-art-studio serve` and `string-art-studio generate`.
 tests/            pytest; the API test runs a real tiny generation end to end.
 scripts/          bench.py (engine benchmarks), make_icons.py (logo to icons).
-deploy/           Media PC install script, Tailscale serve owner step, Homepage and Gatus snippets, piper/ container.
+deploy/           Example home server install script, Tailscale Serve step, Homepage and Gatus snippets, piper/ container.
 ```
 
 ## Working agreement
 1. Decisions go into `docs/DECISIONS.md` as a new ADR at the top; other docs link to the ADR.
-2. Tests ship with the code: `.venv/Scripts/python.exe -m pytest -q` must pass. Engine changes get a
+2. Tests ship with the code: `.venv/Scripts/python.exe -m pytest -q` must pass, and so must
+   `ruff check .` (CI runs both, plus a Docker build and gitleaks; `uv run pytest -q` works too). Engine changes get a
    `scripts/bench.py` run on `samples/portrait-man.jpg` (and `--palette auto4` on `samples/portrait-color.jpg`
    for colour) and the numbers go in the PR or commit body. Compare on the lightness error, not line count.
 3. The prep pipeline is one function for preview and generation (`prep.prepare_target`); never let the
@@ -59,8 +60,10 @@ deploy/           Media PC install script, Tailscale serve owner step, Homepage 
 - Windows dev box: `.venv` (uv, Python 3.11). Run `uv pip install --python .venv/Scripts/python.exe -e ".[dev]"`
   after dependency changes. The Bash tool mangles backslashes in heredocs: write files with the Write
   tool or use forward slashes.
-- Deployment target: media PC WSL distro `homelab`, Docker Compose, `/mnt/c/homelab/string-art-studio`,
-  loopback 8050, Tailscale serve path `/stringart` (owner step). See `docs/RUNBOOK.md`.
+- Deployment target: a home server with Docker Compose, loopback 8050, Tailscale Serve path
+  `/stringart`. See `docs/RUNBOOK.md`. Host names, tailnet names and addresses stay out of the repo.
 - Sample photos in `samples/` are AI-generated fictional people (one in colour) and a dog; they are safe to publish.
+- README screenshots come from a throwaway local instance with the sample photos, never from a real
+  install; `docs/screenshots/CREDITS.md` says how each one was made.
 - Local voice testing: `.env.dev` (ignored) holds `SAS_PIPER_URL=http://127.0.0.1:5000`; build the
   Piper image from `deploy/piper` in WSL and run it with `-p 127.0.0.1:5000:5000`.

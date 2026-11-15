@@ -10,8 +10,8 @@
 # SAS_ROOT_PATH=/stringart so the app knows where it lives.
 #
 # Voice (build mode reads pin numbers aloud with Piper): set COMPOSE_PROFILES=voice and
-# SAS_PIPER_URL=http://piper:5000 in .env, or run `docker compose --profile voice up -d --build`.
-# Without it build mode uses the browser's own speech.
+# SAS_PIPER_URL=http://piper:5000 in .env (both are in .env.example), then run
+# `docker compose up -d --build`. Without them build mode uses the browser's own speech.
 #
 # Upgrade: git pull && docker compose up -d --build
 

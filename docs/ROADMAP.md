@@ -15,7 +15,7 @@ Done:
   ring), sequence TXT/CSV/JSON, render and comparison pictures, project bundle export and import.
 - Step player (build mode v1) with browser voice, auto-advance, clicker keys, wake lock, server-side
   progress with local fallback.
-- Docker image, compose file, media PC deploy script, Homepage and Gatus snippets, tests.
+- Docker image, compose file, home server deploy script, Homepage and Gatus snippets, tests.
 
 Not done in v1:
 - Square and rectangular frames.

@@ -11,8 +11,8 @@ import numpy as np
 import pytest
 
 from stringart import faces
-from stringart.prep import PrepSettings, board_weight, load_source
 from stringart.board import BoardConfig
+from stringart.prep import PrepSettings, board_weight, load_source
 from stringart.voice import VoiceError, VoiceService, pin_phrase
 
 SAMPLE = Path(__file__).resolve().parent.parent / "samples" / "portrait-man.jpg"

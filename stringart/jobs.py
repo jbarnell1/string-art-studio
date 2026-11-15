@@ -18,18 +18,25 @@ from typing import Any
 
 import numpy as np
 
-from stringart.board import BoardConfig, thread_estimate
+from stringart.board import BoardConfig
 from stringart.config import Settings
 from stringart.db import Database
 from stringart.engine.color import ColorState, auto_palette, color_name, palette_order, run_color_greedy
 from stringart.engine.greedy import run_greedy
 from stringart.engine.render import comparison_image, encode_jpeg, encode_png, render_layers_rgb
-from stringart.exports.sequence import layers_thread_estimate
 from stringart.engine.setcover import run_setcover
 from stringart.engine.state import EngineParams, RenderState
+from stringart.exports.sequence import layers_thread_estimate
 from stringart.faces import auto_importance, detect_faces, portrait_frame
-from stringart.prep import (PrepSettings, board_weight, decode_mask_png, load_source, prepare_target,
-                            prepare_target_rgb, remove_background)
+from stringart.prep import (
+    PrepSettings,
+    board_weight,
+    decode_mask_png,
+    load_source,
+    prepare_target,
+    prepare_target_rgb,
+    remove_background,
+)
 
 log = logging.getLogger("stringart.jobs")
 

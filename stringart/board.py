@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import string
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import numpy as np

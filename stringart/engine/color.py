@@ -21,7 +21,7 @@ of different colours as overlapping at random within the blur radius.
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from typing import Callable
 
 import cv2
 import numpy as np

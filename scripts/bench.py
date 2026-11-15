@@ -22,9 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from stringart.board import BoardConfig  # noqa: E402
 from stringart.engine.greedy import run_greedy  # noqa: E402
 from stringart.engine.render import comparison_image, coverage_image, encode_png, render_rgb  # noqa: E402
-from stringart.engine.state import dec, enc  # noqa: E402
 from stringart.engine.setcover import run_setcover  # noqa: E402
-from stringart.engine.state import EngineParams, RenderState  # noqa: E402
+from stringart.engine.state import EngineParams, RenderState, dec, enc  # noqa: E402
 from stringart.faces import auto_importance, detect_faces  # noqa: E402
 from stringart.prep import PrepSettings, board_weight, load_source, prepare_target  # noqa: E402
 

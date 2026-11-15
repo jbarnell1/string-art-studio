@@ -24,6 +24,8 @@ RULER_TEXT = "Check: this bar is exactly 100 mm. Print at 100%, no scaling."
 # Tiling layout, all in mm.
 OVERLAP_MM = 12.0         # neighbouring tiles share this much drawing
 PAGE_MARGIN_MM = 10.0     # unprintable border kept clear on every tiled page
+INDEX_HEADER_MM = 16.0     # title and note at the top of the index page
+INDEX_PAD_MM = 1.0         # keeps the tile outlines' stroke off the page margin
 PAPER_SIZES_MM = {
     "letter": (215.9, 279.4),
     "a4": (210.0, 297.0),
@@ -305,12 +307,33 @@ def _draw_tile_marks(c: canvas.Canvas, grid: dict, row: int, col: int) -> None:
     c.setDash()
 
 
+def index_layout(drawing_w: float, drawing_h: float, grid: dict) -> tuple[float, float, float]:
+    """Scale and page offset (mm) that fit the index overview inside the page margins.
+
+    The tile grid covers more than the drawing: the last column and the last row reach past
+    its right and bottom edges, because whole pages are printed. So the overview is fitted
+    to the union of the drawing and the grid, not to the drawing alone. A drawing-space
+    point (x, y) lands on the page at (offset_x + x * scale, offset_y + y * scale).
+    """
+    grid_right = (grid["cols"] - 1) * grid["step_x"] + grid["usable_w"]
+    grid_bottom = drawing_h - (grid["rows"] - 1) * grid["step_y"] - grid["usable_h"]
+    min_x, max_x = 0.0, max(drawing_w, grid_right)
+    min_y, max_y = min(0.0, grid_bottom), drawing_h
+    extent_w, extent_h = max_x - min_x, max_y - min_y
+
+    box_w = grid["usable_w"] - 2.0 * INDEX_PAD_MM
+    box_h = grid["usable_h"] - INDEX_HEADER_MM - 2.0 * INDEX_PAD_MM
+    scale = min(box_w / extent_w, box_h / extent_h)
+    offset_x = PAGE_MARGIN_MM + INDEX_PAD_MM + (box_w - extent_w * scale) / 2.0 - min_x * scale
+    offset_y = PAGE_MARGIN_MM + INDEX_PAD_MM + (box_h - extent_h * scale) / 2.0 - min_y * scale
+    return scale, offset_x, offset_y
+
+
 def _draw_index_page(c: canvas.Canvas, board: BoardConfig, paper_mm: tuple[float, float], grid: dict,
                      pin_labels: bool) -> None:
     """Whole template scaled to fit one page, with the tile grid drawn over it."""
     drawing_w, drawing_h = drawing_size_mm(board)
     page_w, page_h = paper_mm
-    usable_w, usable_h = grid["usable_w"], grid["usable_h"]
 
     c.saveState()
     c.scale(mm, mm)
@@ -325,12 +348,7 @@ def _draw_index_page(c: canvas.Canvas, board: BoardConfig, paper_mm: tuple[float
         "Print every page at 100%, then align the registration marks.",
     )
 
-    header_h = 16.0
-    box_w = usable_w
-    box_h = usable_h - header_h
-    scale = min(box_w / drawing_w, box_h / drawing_h)
-    offset_x = PAGE_MARGIN_MM + (box_w - drawing_w * scale) / 2.0
-    offset_y = PAGE_MARGIN_MM + (box_h - drawing_h * scale) / 2.0
+    scale, offset_x, offset_y = index_layout(drawing_w, drawing_h, grid)
 
     c.saveState()
     c.translate(offset_x, offset_y)

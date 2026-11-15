@@ -20,6 +20,7 @@ from stringart.exports import (
     steps_table,
     write_bundle,
 )
+from stringart.exports import template_pdf as tp
 from stringart.exports.bundle import BundleError
 
 MM_TO_PT = 72.0 / 25.4
@@ -85,6 +86,43 @@ def test_pdf_single_page_is_true_size(board):
 def test_pdf_without_labels_and_small_board(small_board):
     pdf = pin_template_pdf(small_board, paper="single", pin_labels=False)
     assert pdf.startswith(b"%PDF")
+
+
+@pytest.mark.parametrize("paper", ["a4", "letter"])
+@pytest.mark.parametrize("diameter", [200.0, 300.0, 457.2, 609.6, 762.0, 914.4, 1000.0])
+def test_index_page_overview_fits_inside_the_margins(paper, diameter):
+    # Regression: the overview was scaled to the drawing alone, so on a 24 inch board tiled on
+    # A4 (4 columns, 3 rows) the last column and row of tile outlines ran off the page.
+    board = BoardConfig.from_dict({"diameter_mm": diameter, "pin_count": 240, "sector_count": 8})
+    page_w, page_h = tp.PAPER_SIZES_MM[paper]
+    drawing_w, drawing_h = tp.drawing_size_mm(board)
+    grid = tp.tile_grid(drawing_w, drawing_h, tp.PAPER_SIZES_MM[paper])
+    scale, ox, oy = tp.index_layout(drawing_w, drawing_h, grid)
+
+    rects = [(0.0, 0.0, drawing_w, drawing_h)]
+    for row in range(grid["rows"]):
+        for col in range(grid["cols"]):
+            x, y = tp._tile_origin(grid, drawing_h, row, col)
+            rects.append((x, y, x + grid["usable_w"], y + grid["usable_h"]))
+    left, bottom = tp.PAGE_MARGIN_MM, tp.PAGE_MARGIN_MM
+    right = page_w - tp.PAGE_MARGIN_MM
+    top = page_h - tp.PAGE_MARGIN_MM - tp.INDEX_HEADER_MM   # below the title and note
+    half_stroke = 0.2                                        # tile outlines are 0.4 mm wide
+    for x0, y0, x1, y1 in rects:
+        assert ox + x0 * scale - half_stroke >= left - 1e-6
+        assert oy + y0 * scale - half_stroke >= bottom - 1e-6
+        assert ox + x1 * scale + half_stroke <= right + 1e-6
+        assert oy + y1 * scale + half_stroke <= top + 1e-6
+    if diameter == 609.6 and paper == "a4":
+        assert (grid["cols"], grid["rows"]) == (4, 3)
+
+
+def test_index_page_uses_the_fitted_layout(board, monkeypatch):
+    calls = []
+    real = tp.index_layout
+    monkeypatch.setattr(tp, "index_layout", lambda *a: calls.append(a) or real(*a))
+    pin_template_pdf(board, paper="a4")
+    assert len(calls) == 1
 
 
 def test_pdf_rejects_unknown_paper(board):

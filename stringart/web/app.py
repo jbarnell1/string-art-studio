@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import mimetypes
 import queue
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -37,6 +38,8 @@ from stringart.voice import EXTRA_PHRASES, VoiceError, VoiceService, change_phra
 
 log = logging.getLogger("stringart.web")
 STATIC = Path(__file__).parent / "static"
+# Slim images lack a system mime.types, so the bundled fonts would go out as octet-stream.
+mimetypes.add_type("font/woff2", ".woff2")
 ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "heic", "heif", "webp", "bmp", "tif", "tiff"}
 MAX_UPLOAD = 40 * 1024 * 1024
 

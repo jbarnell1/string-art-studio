@@ -111,11 +111,11 @@ such as Tailscale or a reverse proxy with authentication in front of it (see
 
 Your photos, plans and build progress stay in the `data` folder. The server makes no outbound
 connections while it runs: no telemetry, no update checks, no accounts, no cloud AI. Face
-detection and both engines run locally on the CPU. Three things are worth knowing:
+detection and both engines run locally on the CPU, and the web client loads everything, including
+its font (IBM Plex Sans, bundled), from your server only. Two things are worth knowing:
 
 | What | Where it goes | When |
 |---|---|---|
-| The web font | The page loads IBM Plex Sans from Google Fonts, so each **browser** that opens the app contacts `fonts.googleapis.com` and `fonts.gstatic.com`. Nothing about your projects is sent, and the app falls back to a system font if the request is blocked. | Every page load |
 | Voice | With the `voice` profile, pin numbers are synthesised by Piper in a second container on the same Docker network and cached on disk. Without it, the browser's built-in speech is used; some browsers send the text ("Pin 37. C 14.") to their vendor's speech service. | Build mode with voice on |
 | Background removal | Off by default and not in the image. If you install the optional `bgremove` extra, `rembg` downloads its model (about 170 MB) the first time it is used. | Once, only if you enable it |
 
@@ -146,9 +146,10 @@ The full list of environment variables is in the [runbook](docs/RUNBOOK.md#envir
 |---|---|
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Installing, voice, running behind Tailscale Serve, backups, tips for portraits and colour, building the board, calibration |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the parts fit, the objective both engines optimise, the API, the storage layout |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are the way they are: 25 short decision records, including what was tried and withdrawn |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are the way they are: 26 short decision records, including what was tried and withdrawn |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What is built and what is next |
 | [docs/brief.md](docs/brief.md) | The original product brief |
+| [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md) | Bundled third-party files (the font, the face model) and their licenses |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setting up a dev environment, the checks CI runs, the working rules |
 | [SECURITY.md](SECURITY.md) | How to report a vulnerability, and what the app does not protect against |
 
@@ -193,5 +194,7 @@ privately through the repository's Security tab; details are in [SECURITY.md](SE
 ## License
 
 MIT, see [LICENSE](LICENSE). Piper runs as a separate GPL-3.0 container and is not part of this
-code. The bundled YuNet face model is MIT licensed (`stringart/models/LICENSE-yunet`). The photos
-in `samples/` are AI-generated fictional people and a dog, made for this repo.
+code. The bundled YuNet face model is MIT licensed (`stringart/models/LICENSE-yunet`) and the
+bundled IBM Plex Sans font is under the SIL Open Font License 1.1 (`stringart/web/static/fonts/OFL.txt`);
+see [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md). The photos in `samples/` are AI-generated fictional
+people and a dog, made for this repo.

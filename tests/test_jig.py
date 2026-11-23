@@ -70,3 +70,10 @@ def test_segment_letter_faces_up_in_the_slicer(board):
     assert m.slice(0.3).area() < m.slice(3.0).area() - 20.0     # letter cut into the board side
     data = jig.jig_zip(board, s)
     assert zipfile.ZipFile(io.BytesIO(data)).read("guide_B.stl")[:80].rstrip() == b"String Art Studio guide B"
+
+
+def test_face_on_the_print_bed_is_plain(board):
+    """Lettering in the first layers fouls the nozzle, so the top face (the bed side) is solid."""
+    s = jig.JigSettings(bed_mm=225.0)
+    m = jig.segment_solid(board, jig.segment_groups(board, s.bed_mm, s)[0], s)
+    assert m.slice(s.plate_mm - 0.2).area() == pytest.approx(m.slice(3.0).area(), rel=1e-6)

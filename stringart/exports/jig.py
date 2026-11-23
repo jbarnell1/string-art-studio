@@ -198,18 +198,20 @@ def segment_solid(board: BoardConfig, group: dict[str, Any], s: JigSettings) -> 
     if s.skirt:
         skirt = _annular_sector(rad["skirt_in"], rad["ro"], phi0, phi1).extrude(s.skirt_mm + 0.2).translate([0, 0, -s.skirt_mm])
         solid = solid + skirt
-    # Label debossed into the top face: letter and pin range, upright when read from outside.
+    # Labels go in the face that lies on the board. That face points up on the print bed, so the
+    # slicer shows which segment is which, and the face on the bed stays plain: lettering in the
+    # first layers leaves small islands that lift and foul the nozzle. The x axis is reversed so
+    # the text reads correctly once the part is turned over.
     phim = (phi0 + phi1) / 2.0
-    label = f"{group['label']} {group['pins'][0]}-{group['pins'][-1]}"
-    xaxis, yaxis = -_tangent(phim), -_polar(1.0, phim)
+    xaxis, yaxis = _tangent(phim), -_polar(1.0, phim)
     centre = _polar(rad["key_rc"], phim)
-    text = _cs(_place(_text(label, 5.0), centre, xaxis, yaxis))
-    solid = solid - text.extrude(1.2).translate([0, 0, s.plate_mm - 0.7])
-    # The same letter, large, in the face that lies on the board. That face points up on the
-    # print bed, so the slicer shows which segment is which. The x axis is reversed so the letter
-    # reads correctly once the part is turned over.
-    big = _cs(_place(_text(group["label"], 12.0), centre, _tangent(phim), yaxis))
-    solid = solid - big.extrude(1.2).translate([0, 0, -0.6])
+    big = _text(group["label"], 12.0)
+    small = _text(f"{group['pins'][0]}-{group['pins'][-1]}", 5.0)
+    half_big = max(float(np.abs(q[:, 0]).max()) for q in big)
+    half_small = max(float(np.abs(q[:, 0]).max()) for q in small)
+    offset = half_big + 4.0 + half_small
+    text = _cs(_place(big, centre, xaxis, yaxis) + _place(small, centre + offset * xaxis, xaxis, yaxis))
+    solid = solid - text.extrude(1.2).translate([0, 0, -0.6])
     return solid
 
 
@@ -277,8 +279,8 @@ Print (PLA is fine: the jig only guides the drill, it never carries thread):
    tenths of a millimetre. If it is not 2, change "Guide hole clearance" on the results page to that
    number divided by 10 and download the jig again. This guide was made with {clear:.1f} mm.
 2. Print the segments: {segments}.
-   Each has a large letter on the side facing up in the slicer (the side that lies on the board),
-   and its letter and pin range on the side that prints on the bed.
+   Each has its letter and pin range on the side facing up in the slicer (the side that lies on
+   the board). The side on the bed is plain, so the first layers are simple.
 3. Lay them on the board's face clockwise as seen from the front, starting with A at twelve o'clock
    (pin 0). {skirt_line} Each segment's dovetail locks into the next. Tape or clamp the ring
    down so it cannot move.

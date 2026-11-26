@@ -253,6 +253,15 @@ class JobManager:
         prog.cancel.set()
         return True
 
+    def _continued_prefix(self, project_id: str, cont: dict[str, Any] | None) -> list[int] | None:
+        """The lines already strung when this run continues another one (ADR-027): its first
+        `step` lines, so the pins from 0 to `step`."""
+        if not cont:
+            return None
+        path = self.files(project_id).run_dir(str(cont["run_id"])) / "sequence.json"
+        seq = json.loads(path.read_text(encoding="utf-8"))
+        return [int(p) for p in seq[: int(cont["step"]) + 1]]
+
     def _execute(self, run: dict[str, Any], prog: RunProgress) -> None:
         run_id = run["id"]
         project_id = run["project_id"]
@@ -306,7 +315,11 @@ class JobManager:
                 layers = [layer for layer in layers if len(layer["sequence"]) >= 2] or layers[-1:]   # a colour with no lines is left out
                 sigma, a_pass, objective = cstate.sigma, cstate.a, "lab"
             else:
-                result = run_greedy(state, params, on_progress) if params.engine == "a" else run_setcover(state, params, on_progress)
+                prefix = self._continued_prefix(project_id, run["params"].get("continue_from"))
+                if prefix:
+                    result = run_greedy(state, params, on_progress, prefix=prefix)
+                else:
+                    result = run_greedy(state, params, on_progress) if params.engine == "a" else run_setcover(state, params, on_progress)
                 layers = [{"name": color_name(board.thread_color), "color": board.thread_color, "sequence": [int(p) for p in result.sequence]}]
                 sigma, a_pass, objective = state.sigma, state.a, state.objective
             if result.cancelled:

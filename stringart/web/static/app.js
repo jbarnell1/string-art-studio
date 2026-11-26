@@ -1094,6 +1094,38 @@
       ]);
     }
 
+    // Continue this plan from the step on the board with new settings, keeping what is strung (ADR-027).
+    const isColorRun = (board.palette_auto || 0) >= 2 || (board.palette || []).length >= 2;
+    if (run.status === "done" && !isColorRun && run.metrics && run.metrics.line_count > 2) {
+      const lines = run.metrics.line_count;
+      const saved = (run.build_progress && run.build_progress.step) || 0;
+      const stepInput = el("input", { type: "number", step: 1, min: 1, max: lines - 1, value: clamp(saved || 1, 1, lines - 1), style: "width:90px;height:32px", "aria-label": "Lines already strung" });
+      const widthInput = el("input", { type: "number", step: 0.01, min: 0.05, max: 2, value: board.thread_width_mm || 0.25, style: "width:80px;height:32px", "aria-label": "Thread width in mm" });
+      const goBtn = el("button", { class: "btn small primary" }, "Plan the rest");
+      goBtn.addEventListener("click", async () => {
+        const step = Math.round(Number(stepInput.value));
+        const width = Number(widthInput.value);
+        if (!(step >= 1 && step < lines)) { toast(`Enter a step between 1 and ${fmt.int(lines - 1)}`); return; }
+        goBtn.disabled = true;
+        try {
+          const params = Object.assign({}, run.params);
+          delete params.continue_from;
+          const res = await api.post(`api/projects/${project.id}/runs`, { engine: "a", prep: run.prep, board: Object.assign({}, board, { thread_width_mm: width }), params, continue_from: { run_id: runId, step } });
+          location.hash = `#/r/${res.runs[0].id}`;
+        } catch (err) {
+          toast("Could not start: " + err.message);
+          goBtn.disabled = false;
+        }
+      });
+      sheet.append(el("h2", { class: "section", style: "margin-top:28px" }, "Continue from where you are"), el("div", { class: "panel", style: "padding:16px" }, [
+        el("p", { style: "margin-top:0" }, "Keeps the lines already on the board exactly as they are and plans only the rest, for example with the thread width you measured. The new plan picks up at the same pin, and build mode opens at the same step."),
+        el("div", { class: "btn-row", style: "align-items:center" }, [
+          el("label", { class: "muted", style: "display:flex;gap:6px;align-items:center;font-size:12px" }, ["Lines strung", stepInput]),
+          el("label", { class: "muted", style: "display:flex;gap:6px;align-items:center;font-size:12px" }, ["Thread width mm", widthInput]),
+          goBtn]),
+      ]));
+    }
+
     // Exports.
     const paperName = state.units === "in" ? "Letter" : "A4";
     const paperKey = state.units === "in" ? "letter" : "a4";

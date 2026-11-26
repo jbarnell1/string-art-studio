@@ -133,3 +133,23 @@ def test_uneven_pins_break_up_chord_rings():
     assert np.ptp(chord_distances(even, 110)) < 1e-9
     step = even.pin_radius_mm * math.pi / even.pin_count
     assert np.ptp(chord_distances(uneven, 110)) > 0.8 * step
+
+
+def test_continued_plan_keeps_the_strung_lines_and_fits_thicker_thread():
+    """ADR-027: the first lines are fixed, the rest is planned for the thread really in use, and
+    that beats finishing the old plan with the thicker thread."""
+    gray = _target()
+    thin = _board()
+    w = board_weight(thin, 240)
+    params = EngineParams(refine_seconds=2, time_budget_s=60)
+    old = run_greedy(RenderState(gray, w, thin, 1.0), params).sequence
+    prefix = old[:81]
+    thick = BoardConfig(pin_count=72, min_skip=6, max_lines=300, work_res=240, thread_width_mm=thin.thread_width_mm * 2)
+    new = run_greedy(RenderState(gray, w, thick, 1.0), params, prefix=prefix)
+    assert new.sequence[:81] == prefix
+    assert len(new.sequence) - 1 <= thick.max_lines
+    assert all(thick.chord_valid(a, b) for a, b in zip(new.sequence[:-1], new.sequence[1:]))
+    finished_old = RenderState(gray, w, thick, 1.0)
+    for a, b in zip(old[:-1], old[1:]):
+        finished_old.add_line(a, b)
+    assert new.error < finished_old.error()

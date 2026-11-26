@@ -92,6 +92,12 @@ results page (ADR-021).
 A Brightest white setting (default 0.8) keeps highlights and faces evenly hatched (ADR-023). Auto
 tone was tried and withdrawn: Soft levels with the ceiling looked better (ADR-022, ADR-024).
 
+## v3 part eight, continue a plan (built 2026-11-25)
+
+A plan can continue from the step on the board with different thread settings, keeping the lines
+already strung (ADR-027). Built after the first real build showed the thread was thicker than the
+plan assumed.
+
 ## Later
 
 - Square and rectangular frames; printable thread-width test pattern; minimum-weight matching in

@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -157,6 +158,9 @@ class RunIn(BaseModel):
     board: dict[str, Any] | None = None
     params: dict[str, Any] | None = None
     label: str = ""
+    # Keep the first `step` lines of another run of this project (thread already strung) and plan
+    # only the rest, for example with a corrected thread width (ADR-027).
+    continue_from: dict[str, Any] | None = None
 
 
 class PresetIn(BaseModel):
@@ -198,6 +202,32 @@ def _read_sequence(ctx: Context, run: dict[str, Any]) -> list[int]:
     if not p.exists():
         raise HTTPException(409, "run has no sequence yet")
     return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _continuation(ctx: Context, pid: str, board: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    """Check a continue-from request: a finished single-thread run of this project, pins in exactly
+    the same places (the strung pins cannot move), and a step inside its plan."""
+    src = ctx.db.get_run(str(body.get("run_id") or ""))
+    if not src or src["project_id"] != pid:
+        raise HTTPException(404, "no such run in this project")
+    if src["status"] != "done":
+        raise HTTPException(409, "that run has not finished")
+    new_b, old_b = BoardConfig.from_dict(board), BoardConfig.from_dict(src["board"])
+    if new_b.is_color or old_b.is_color:
+        raise HTTPException(409, "continuing a plan works for a single thread colour only")
+    if new_b.pin_count != old_b.pin_count or not np.allclose(new_b.pin_positions_mm(), old_b.pin_positions_mm(), atol=1e-6):
+        raise HTTPException(409, "the pins are not where that run put them; keep diameter, pin count, inset, "
+                                 "pin size and uneven spacing the same as the run you are continuing")
+    seq = _read_sequence(ctx, src)
+    try:
+        step = int(body.get("step"))
+    except (TypeError, ValueError):
+        raise HTTPException(422, "step must be a whole number") from None
+    if not 1 <= step < len(seq) - 1:
+        raise HTTPException(422, f"step must be between 1 and {len(seq) - 2}")
+    if step >= new_b.max_lines:
+        raise HTTPException(422, "Maximum lines must be more than the lines already strung")
+    return {"run_id": src["id"], "step": step}
 
 
 def _read_layers(ctx: Context, run: dict[str, Any]) -> list[dict[str, Any]]:
@@ -423,16 +453,23 @@ def register_api(app: FastAPI, get_ctx) -> None:  # noqa: C901 - one flat router
         prep = PrepSettings.from_dict(body.prep if body.prep is not None else project["prep"]).to_dict()
         board = BoardConfig.from_dict(body.board if body.board is not None else project["board"]).to_dict()
         params = EngineParams.from_dict(body.params if body.params is not None else project["engine"]).to_dict()
+        cont = _continuation(ctx, pid, board, body.continue_from) if body.continue_from else None
         ctx.db.update_project(pid, prep=prep, board=board, engine=params)
         engines = ["a", "b"] if body.engine == "both" else [body.engine if body.engine in ("a", "b") else "a"]
-        if BoardConfig.from_dict(board).is_color:
-            engines = ["a"]   # colour runs use engine A only (ADR-017)
+        if BoardConfig.from_dict(board).is_color or cont:
+            engines = ["a"]   # colour runs and continued plans use engine A only (ADR-017, ADR-027)
         group = new_id() if len(engines) > 1 else ""
         runs = []
         for eng in engines:
             p = dict(params)
             p["engine"] = eng
-            run = ctx.db.create_run(pid, eng, prep, board, p, group_id=group, label=body.label)
+            label = body.label
+            if cont:
+                p["continue_from"] = cont
+                label = label or f"Continued from step {cont['step']:,}"
+            run = ctx.db.create_run(pid, eng, prep, board, p, group_id=group, label=label)
+            if cont:
+                ctx.db.set_progress(run["id"], cont["step"], "")   # build mode opens where the thread is
             ctx.jobs.submit(run)
             runs.append(run)
         return {"runs": runs}

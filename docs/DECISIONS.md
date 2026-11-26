@@ -4,6 +4,24 @@ Short, dated records of why we chose something. Newest first. Reversals get a ne
 
 ## Decisions
 
+### ADR-027 - A plan can continue from the step on the board
+**2026-11-25.** The owner's first real build, 800 lines into a 6,104-line plan, was already close to
+black in the middle: the plan assumed 0.25 mm thread and the Tex 45 bonded nylon in use darkens
+like roughly 0.4 to 0.55 mm (thickness, fuzz and shadow; measured by rendering the plan's first
+800 lines at several widths beside a photo of the board). Unwinding 800 lines costs about two
+hours, and finishing the old plan would bury the face.
+
+A run can now continue another run of the same project: `continue_from: {run_id, step}` on
+`POST /api/projects/{pid}/runs`, and "Continue from where you are" on the results page. The first
+`step` lines of the source go into the simulation first and are never changed; engine A grows and
+polishes a new path that starts at the pin the thread is on (local search never moves a path's
+first pin), within the line budget that is left; the result is the old lines followed by the new
+ones, and build mode opens at `step`. Only the thread can change: the pins must be exactly where
+the source put them (diameter, pin count, inset, pin size and uneven spacing), which the API
+checks against `pin_positions_mm`, and continuing is single-colour and engine A only. Without a
+prefix the engine is unchanged (portrait-man bench: lightness error 0.1188 before, 0.1182 after,
+within run-to-run noise from the time-bounded search).
+
 ### ADR-026 - The font is bundled; the browser talks only to the app
 **2026-11-15.** ADR-025 left the web font on Google Fonts, which made every browser that opened
 the app contact `fonts.googleapis.com` and `fonts.gstatic.com`. For a self-hosted app that says

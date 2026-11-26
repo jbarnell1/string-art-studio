@@ -183,3 +183,35 @@ def test_colour_run_layers_and_exports(client: TestClient):
     imported = client.post("/api/projects/import", files={"file": ("c.zip", bundle.content, "application/zip")}).json()
     new_run = client.get(f"/api/projects/{imported['id']}").json()["runs"][0]
     assert len(client.get(f"/api/runs/{new_run['id']}/steps").json()["layers"]) == 2
+
+
+def test_continue_a_plan_from_the_strung_step(client: TestClient):
+    """ADR-027: a new run keeps the first lines of an earlier one and build mode opens there."""
+    pid = client.post("/api/projects", json={"name": "Continue"}).json()["id"]
+    client.post(f"/api/projects/{pid}/image", files={"file": ("photo.jpg", _photo_bytes(), "image/jpeg")})
+    board = {"pin_count": 100, "max_lines": 120, "work_res": 300, "min_skip": 10, "thread_width_mm": 0.25}
+    params = {"refine_seconds": 1, "time_budget_s": 60}
+    src = client.post(f"/api/projects/{pid}/runs", json={"engine": "a", "board": board, "params": params}).json()["runs"][0]
+    src = _wait_done(client, src["id"])
+    assert src["status"] == "done", src["error_message"]
+    old = client.get(f"/api/runs/{src['id']}/steps").json()["sequence"]
+
+    thick = dict(board, thread_width_mm=0.5)
+    r = client.post(f"/api/projects/{pid}/runs", json={"engine": "both", "board": thick, "params": params,
+                                                       "continue_from": {"run_id": src["id"], "step": 30}})
+    assert r.status_code == 201
+    runs = r.json()["runs"]
+    assert len(runs) == 1 and runs[0]["engine"] == "a" and runs[0]["label"] == "Continued from step 30"
+    new = _wait_done(client, runs[0]["id"])
+    assert new["status"] == "done", new["error_message"]
+    steps = client.get(f"/api/runs/{new['id']}/steps").json()
+    assert steps["sequence"][:31] == old[:31]
+    assert steps["progress"]["step"] == 30
+
+    moved = dict(thick, diameter_mm=500.0)
+    r = client.post(f"/api/projects/{pid}/runs", json={"board": moved, "params": params,
+                                                       "continue_from": {"run_id": src["id"], "step": 30}})
+    assert r.status_code == 409
+    r = client.post(f"/api/projects/{pid}/runs", json={"board": thick, "params": params,
+                                                       "continue_from": {"run_id": src["id"], "step": 10_000}})
+    assert r.status_code == 422

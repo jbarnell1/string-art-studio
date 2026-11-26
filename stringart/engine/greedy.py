@@ -11,11 +11,20 @@ from stringart.engine.state import Cancelled, Clock, EngineParams, ProgressFn, R
 PREVIEW_EVERY = 40
 
 
-def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | None = None) -> RunResult:
+def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | None = None,
+               prefix: list[int] | None = None) -> RunResult:
+    """`prefix` is thread already on the board (a plan continued part way, ADR-027): its lines go
+    into the simulation first and are never changed; the new path starts at its last pin and the
+    result is the prefix followed by that path."""
     board = state.board
     clock = Clock(params.time_budget_s)
     error0 = state.error()
-    seq = [int(params.start_pin) % board.pin_count]
+    fixed = [int(p) for p in prefix] if prefix else []
+    for i, j in zip(fixed[:-1], fixed[1:]):
+        state.add_line(i, j)
+    # Line budget left for the new path. Local search never moves seq[0], so the joint is kept.
+    cap = max(board.max_lines - max(len(fixed) - 1, 0), 0)
+    seq = [fixed[-1]] if fixed else [int(params.start_pin) % board.pin_count]
     cancelled = False
     changes = 0
     regrown = 0
@@ -29,7 +38,7 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
         """Extend seq greedily from its last pin until nothing helps, the line budget or the clock."""
         cur = seq[-1]
         step = 0
-        while len(seq) - 1 < board.max_lines:
+        while len(seq) - 1 < cap:
             js = board.valid_targets(cur)
             g = state.gains(cur, js)
             best = int(np.argmax(g))
@@ -51,7 +60,7 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
             cur = nxt
             step += 1
             if progress and (step % PREVIEW_EVERY == 0):
-                progress({"phase": phase, "lines": len(seq) - 1, "max_lines": board.max_lines,
+                progress({"phase": phase, "lines": len(fixed) + len(seq) - 2 if fixed else len(seq) - 1, "max_lines": board.max_lines,
                           "elapsed_s": clock.elapsed(), "preview": state.preview()})
             if step % 16 == 0:
                 state.check_cancel()
@@ -65,7 +74,7 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
             search = Clock(min(params.refine_seconds, params.time_budget_s - clock.elapsed()))
             if params.local_search == "refine":
                 changes = refine(state, seq, search.budget, params.seed, progress)
-                if len(seq) - 1 < board.max_lines and not clock.expired() and stop != "stuck at pin":
+                if len(seq) - 1 < cap and not clock.expired() and stop != "stuck at pin":
                     before = len(seq)
                     stop = walk("regrow")
                     regrown = len(seq) - before
@@ -73,12 +82,12 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
                 # Alternate: local search over the whole path, then grow again from the end,
                 # until neither changes anything or the search budget is spent.
                 while not search.expired() and not clock.expired():
-                    totals = polish(state, seq, search.budget - search.elapsed(), eps, progress)
+                    totals = polish(state, seq, search.budget - search.elapsed(), eps, progress, max_lines=cap)
                     rounds += totals["rounds"]
                     applied = totals["replace"] + totals["insert"] + totals["delete"] + totals["unfold"]
                     changes += applied
                     grown = 0
-                    if len(seq) - 1 < board.max_lines and stop != "stuck at pin" and not clock.expired():
+                    if len(seq) - 1 < cap and stop != "stuck at pin" and not clock.expired():
                         before = len(seq)
                         stop = walk("regrow")
                         grown = len(seq) - before
@@ -89,6 +98,8 @@ def run_greedy(state: RenderState, params: EngineParams, progress: ProgressFn | 
         cancelled = True
         stop = "cancelled"
         changes = 0
+    if fixed:
+        seq = fixed + seq[1:]
     return RunResult(
         sequence=seq, error=state.error(), error_initial=error0, line_count=len(seq) - 1,
         thread_length_mm=board.sequence_length_mm(seq), elapsed_s=clock.elapsed(), engine="a",

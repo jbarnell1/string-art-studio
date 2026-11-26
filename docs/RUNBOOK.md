@@ -148,3 +148,6 @@ new template prints the uneven positions. Never mix a template and a plan from d
 4. If the real piece is lighter or darker than the render overall, `thread_opacity` is the knob;
    if only the mid-tones differ, gamma in the Tone panel. Light-area protection stays at 1.0 unless
    you want a moodier, hazier piece.
+5. Found out part way through a build? Do not unwind it. On the plan's results page, "Continue
+   from where you are" keeps the lines already strung, takes the corrected thread width and plans
+   only the rest (ADR-027). Build mode then opens at the same step.
